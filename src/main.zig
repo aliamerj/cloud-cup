@@ -6,5 +6,8 @@ pub fn main() !void {
     errdefer arena.deinit();
     const allocator = arena.allocator();
     const conf = try config.Config.init(allocator, "config/main_config.json");
-    conf.run();
+    conf.run() catch |err| {
+        std.debug.print("Failed to connect: {}\n", .{err});
+        return;
+    };
 }
