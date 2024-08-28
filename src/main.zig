@@ -3,9 +3,10 @@ const config = @import("config.zig");
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    errdefer arena.deinit();
+    defer arena.deinit();
     const allocator = arena.allocator();
-    const conf = try config.Config.init(allocator, "config/main_config.json");
+
+    const conf = try config.Config.init("config/main_config.json", allocator);
     conf.run() catch |err| {
         std.debug.print("Failed to connect: {}\n", .{err});
         return;
