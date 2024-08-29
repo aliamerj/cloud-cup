@@ -8,19 +8,19 @@ pub const Algorithm = union(enum) {
 
     pub fn init(self: Algorithm, servers: []Server) !void {
         switch (self) {
-            .round_robin => try self.round_robin.init(servers),
+            inline else => |algo| try algo.init(servers),
         }
     }
 
     pub fn handle(self: Algorithm, request: *const []u8, response_writer: *const std.net.Stream.Writer) !void {
         switch (self) {
-            .round_robin => try self.round_robin.handle(request, response_writer),
+            inline else => |algo| try algo.handle(request, response_writer),
         }
     }
 
     pub fn deinit(self: Algorithm) void {
         switch (self) {
-            .round_robin => self.round_robin.deinit(),
+            inline else => |algo| algo.deinit(),
         }
     }
 };
