@@ -2,7 +2,7 @@
 <div align="center">
   <img src="https://github.com/user-attachments/assets/6b5aae46-2ac0-4c2f-a98c-675f2bf02350"  alt="Cloud Cup">
      <h3>Cloud Cup</h3>
-  <p><strong>The Nextcloud Alternative: The Future of Cloud Storage</strong></p>
+  <p><strong>Load Balancer built using Zig</strong></p>
 </div>
 
 
