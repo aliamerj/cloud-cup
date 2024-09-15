@@ -24,37 +24,56 @@ pub const RoundRobin = struct {
         self.servers.deinit();
     }
 
-    pub fn handle(self: *RoundRobin, request: *const []u8, response_writer: *const std.net.Stream.Writer) !void {
-        const len = self.servers.count();
+    pub fn handle(self: *RoundRobin, server: *std.net.Server) !void {
+        var server_key: usize = 0;
+        const servers_number = self.servers.count();
 
-        // Base case: if there are no servers left, return a 502 Bad Gateway response
-        if (len == 0) {
-            return self.sendBadGateway(response_writer);
+        while (true) {
+            var servers_down: usize = 0;
+            const client = try server.accept();
+            defer client.stream.close();
+
+            const client_writer = client.stream.writer();
+            const client_reader = client.stream.reader();
+
+            // Read the HTTP request
+            var request_buffer: [8192]u8 = undefined;
+            const request_len = try client_reader.read(&request_buffer);
+
+            while (servers_number > servers_down) {
+                if (self.servers.get(server_key)) |server_to_run| {
+                    var current_server = server_to_run;
+                    if (current_server.attempts >= max_attempts) {
+                        servers_down += 1;
+                    }
+                    connectAndForwardRequest(current_server.server, &request_buffer[0..request_len], &client_writer) catch {
+                        current_server.attempts += 1;
+                        try self.servers.put(server_key, current_server);
+                        findNextServer(servers_number, &server_key, current_server);
+                        continue;
+                    };
+
+                    if (current_server.attempts > 0) {
+                        current_server.attempts = 0;
+                        try self.servers.put(server_key, current_server);
+                    }
+                    findNextServer(servers_number, &server_key, current_server);
+                    break;
+                }
+            }
+            try self.sendBadGateway(&client_writer);
         }
+    }
 
-        // Ensure current_index is within bounds
-        var server_iter = self.servers.iterator();
-        while (server_iter.next()) |entry| {
-            var server_data = entry.value_ptr.*;
-            const server_key = entry.key_ptr.*;
-            if (server_data.attempts >= max_attempts) {
-                _ = self.servers.remove(server_key);
-                continue;
-            }
-
-            connectAndForwardRequest(server_data.server, request, response_writer) catch {
-                server_data.attempts += 1;
-                try self.servers.put(server_key, server_data);
-            };
-
-            if (server_data.attempts > 0) {
-                server_data.attempts = 0;
-                try self.servers.put(server_key, server_data);
-            }
+    fn findNextServer(servers_number: usize, server_key: *usize, server_data: ServerData) void {
+        // Skip the current server if its attempts have reached the max
+        if (server_data.attempts >= max_attempts) {
+            server_key.* = (server_key.* + 1) % servers_number;
             return;
         }
 
-        return self.sendBadGateway(response_writer);
+        // Move to the next server, wrapping around if necessary
+        server_key.* = (server_key.* + 1) % servers_number;
     }
 
     fn sendBadGateway(self: *RoundRobin, response_writer: *const std.net.Stream.Writer) !void {
@@ -81,7 +100,7 @@ pub const RoundRobin = struct {
     }
 
     fn forwardResponse(socket: std.net.Stream, response_writer: *const std.net.Stream.Writer) !void {
-        var response_buffer: [4096]u8 = undefined;
+        var response_buffer: [8192]u8 = undefined;
         while (true) {
             const response_len = try socket.reader().read(&response_buffer);
             if (response_len == 0) break;

@@ -6,7 +6,11 @@ pub fn main() !void {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const conf = try config.Config.init("config/main_config.json", allocator);
+    const conf = config.Config.init("config/main_config.json", allocator) catch |err| {
+        std.log.err("Failed to load configuration file 'config/main_config.json': {any}", .{err});
+        return;
+    };
+
     conf.run() catch |err| {
         std.debug.print("Failed to connect: {}\n", .{err});
         return;

@@ -12,9 +12,9 @@ pub const Algorithm = union(enum) {
         }
     }
 
-    pub fn handle(self: Algorithm, request: *const []u8, response_writer: *const std.net.Stream.Writer) !void {
+    pub fn handle(self: Algorithm, server: *std.net.Server) !void {
         switch (self) {
-            inline else => |algo| try algo.handle(request, response_writer),
+            inline else => |algo| try algo.handle(server),
         }
     }
 

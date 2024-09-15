@@ -1,12 +1,12 @@
 const std = @import("std");
-const h = @import("http/http.zig");
+const Http = @import("http/http.zig").Http;
 const algo = @import("http/Algorithm.zig");
 const Allocator = std.mem.Allocator;
 
 const Options = struct {
     host: []const u8,
     port: u16,
-    http: ?h.Http = null,
+    http: Http,
 };
 
 pub const Config = struct {
@@ -24,36 +24,16 @@ pub const Config = struct {
     }
 
     pub fn run(self: *const Config) !void {
-        std.debug.print("Starting server on {s}:{any}\n", .{ self.options.host, self.options.port });
         const address = try std.net.Address.parseIp4(self.options.host, self.options.port);
         var server = try address.listen(.{});
-        std.debug.print("Server listening on {s}:{any}\n", .{ self.options.host, self.options.port });
+        std.log.info("Server listening on {s}:{any}\n", .{ self.options.host, self.options.port });
 
-        var method: ?algo.Algorithm = null;
-
-        if (self.options.http) |http| {
-            method = http.httpSetup();
-            try method.?.init(http.servers);
+        if (self.options.http.httpSetup()) |method| {
+            try method.init(self.options.http.servers);
+            defer method.deinit();
+            try method.handle(&server);
         }
-        defer method.?.deinit();
 
-        while (true) {
-            const client = try server.accept();
-            defer client.stream.close();
-
-            const client_writer = client.stream.writer();
-            const client_reader = client.stream.reader();
-
-            if (method == null) {
-                // Send the response to the client
-                try client_writer.writeAll("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\n No HTTP configuration provided.\n");
-                return;
-            }
-
-            // Read the HTTP request
-            var request_buffer: [8192]u8 = undefined;
-            const request_len = try client_reader.read(&request_buffer);
-            try method.?.handle(&request_buffer[0..request_len], &client_writer);
-        }
+        std.log.err("Unsupported load balancing method: '{s}'. The method '{s}' is not supported by the current load balancer configuration.", .{ self.options.http.method.?, self.options.http.method.? });
     }
 };
