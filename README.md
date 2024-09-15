@@ -1,4 +1,12 @@
-# Cloud-Cup
+
+<div align="center">
+  <img src="https://github.com/user-attachments/assets/6b5aae46-2ac0-4c2f-a98c-675f2bf02350"  alt="Cloud Cup">
+     <h3>Cloud Cup</h3>
+  <p><strong>The Nextcloud Alternative: The Future of Cloud Storage</strong></p>
+</div>
+
+
+
 **Cloud-Cup** is load balancer built using Zig. Designed for modern cloud environments, Cloud-Cup combines simplicity, efficiency, and scalability to ensure your applications can handle massive traffic with minimal latency.
 
 # 🚀 Features
