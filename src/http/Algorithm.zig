@@ -2,7 +2,7 @@ const std = @import("std");
 const Server = @import("http.zig").Server;
 
 const Round_robin = @import("methods/round_robin.zig").RoundRobin;
-
+const EpollNonblock = @import("utils/epoll_nonblock.zig").EpollNonblock;
 pub const Algorithm = union(enum) {
     round_robin: *Round_robin,
 
@@ -12,9 +12,9 @@ pub const Algorithm = union(enum) {
         }
     }
 
-    pub fn handle(self: Algorithm, server: *std.net.Server) !void {
+    pub fn handle(self: Algorithm, server: *std.net.Server, epoll: *EpollNonblock) !void {
         switch (self) {
-            inline else => |algo| try algo.handle(server),
+            inline else => |algo| try algo.handle(server, epoll),
         }
     }
 
