@@ -6,7 +6,6 @@ pub const Epoll = struct {
     pub fn init(tcp: std.net.Server) !Epoll {
         const epoll_fd = try std.posix.epoll_create1(0);
         try setNonblock(tcp.stream);
-        std.log.info("Epoll initialized with server {d}", .{tcp.stream.handle});
 
         try registerEpoll(epoll_fd, tcp.stream.handle, true);
 
@@ -19,8 +18,8 @@ pub const Epoll = struct {
         _ = std.os.linux.close(self.epoll_fd);
     }
 
-    pub fn wait(self: *const Epoll, events: *[100]std.os.linux.epoll_event) usize {
-        return std.os.linux.epoll_wait(self.epoll_fd, events, 100, -1);
+    pub fn wait(self: *const Epoll, events: *[1024]std.os.linux.epoll_event) usize {
+        return std.os.linux.epoll_wait(self.epoll_fd, events, 1024, -1);
     }
 
     pub fn new(self: *const Epoll, stream: std.net.Stream) !void {
