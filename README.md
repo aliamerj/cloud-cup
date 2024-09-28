@@ -95,7 +95,7 @@ Percentage of the requests served within a certain time (ms)
 ```
 With these stats, Cloud Cup is positioned as a competitive reverse proxy solution, capable of handling high volumes of traffic with minimal latency.
 
-#### This benchmarking was done with 1000 requests at a concurrency level of 10. Cloud-Cup’s current performance delivers around 1117 requests per second, but there’s room for improvement by implementing asynchronous I/O.
+#### This benchmarking was done with 1000 requests at a concurrency level of 10, but there’s room for improvement by implementing asynchronous I/O.
 
 
 
