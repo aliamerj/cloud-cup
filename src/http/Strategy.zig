@@ -6,21 +6,15 @@ const Epoll = @import("../utils/epoll.zig").Epoll;
 pub const Strategy = union(enum) {
     round_robin: *Round_robin,
 
-    pub fn init(self: Strategy, servers: []Server) !void {
+    pub fn handle(self: Strategy, server: *std.net.Server, epoll: Epoll, allocator: std.mem.Allocator) !void {
         switch (self) {
-            inline else => |algo| try algo.init(servers),
-        }
-    }
-
-    pub fn handle(self: Strategy, server: *std.net.Server, epoll: Epoll) !void {
-        switch (self) {
-            inline else => |algo| try algo.handle(server, epoll),
+            inline else => |strategy| try strategy.handle(server, epoll, allocator),
         }
     }
 
     pub fn deinit(self: Strategy) void {
         switch (self) {
-            inline else => |algo| algo.deinit(),
+            inline else => |strategy| strategy.deinit(),
         }
     }
 };

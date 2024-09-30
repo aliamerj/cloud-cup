@@ -30,14 +30,17 @@ pub const Config = struct {
     }
 
     pub fn run(self: *const Config) !void {
-        var strategy = getHttpStrategy(self.options.http.httpSetup()) catch |err| {
-            std.log.err("Unsupported load balancing method: '{s}'. The method '{s}' is not supported by the current load balancer configuration.", .{
+        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+        defer _ = gpa.deinit();
+        const allocator = gpa.allocator();
+
+        var strategy = getHttpStrategy(self.options.http.httpSetup(allocator)) catch |err| {
+            std.log.err("Unsupported load balancing Strategy: '{s}'. The method '{s}' is not supported by the current load balancer configuration.", .{
                 self.options.http.method.?,
                 self.options.http.method.?,
             });
             return err;
         };
-        try strategy.init(self.options.http.servers);
         defer strategy.deinit();
 
         const server_addy = try std.net.Address.parseIp4(self.options.host, self.options.port);
@@ -50,7 +53,7 @@ pub const Config = struct {
         defer epoll.deinit();
 
         std.log.info("Server listening on {s}:{any}\n", .{ self.options.host, self.options.port });
-        try strategy.handle(&tcp_server, epoll);
+        try strategy.handle(&tcp_server, epoll, allocator);
     }
 
     fn getHttpStrategy(strategy: ?Strategy) !Strategy {
@@ -58,6 +61,6 @@ pub const Config = struct {
             return stra;
         }
         std.log.err("Unsupported load balancing Strategy", .{});
-        return error.ConnectFail;
+        return error.Unsupported;
     }
 };

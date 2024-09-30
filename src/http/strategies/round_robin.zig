@@ -14,24 +14,28 @@ pub const Hash_map = std.AutoHashMap(usize, ServerData);
 pub const RoundRobin = struct {
     const max_attempts: u32 = 5; // todo : add as an option to config file
     servers: Hash_map = undefined,
+    allocator: std.mem.Allocator,
 
-    pub fn init(self: *RoundRobin, servers: []Server) !void {
-        self.servers = Hash_map.init(std.heap.page_allocator);
+    pub fn init(servers: []Server, allocator: std.mem.Allocator) !RoundRobin {
+        var backends = Hash_map.init(allocator);
+
         for (servers, 0..) |value, i| {
-            try self.servers.put(i, .{ .server = value, .attempts = 0 });
+            try backends.put(i, .{ .server = value, .attempts = 0 });
         }
+
+        return RoundRobin{
+            .servers = backends,
+            .allocator = allocator,
+        };
     }
 
     pub fn deinit(self: *RoundRobin) void {
         self.servers.deinit();
     }
 
-    pub fn handle(self: *RoundRobin, tcp_server: *std.net.Server, epoll: Epoll) !void {
+    pub fn handle(self: *RoundRobin, tcp_server: *std.net.Server, epoll: Epoll, allocator: std.mem.Allocator) !void {
         var events: [1024]std.os.linux.epoll_event = undefined;
         var server_key: usize = 0;
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-        const allocator = gpa.allocator();
-        defer _ = gpa.deinit();
 
         while (true) {
             const nfds = epoll.wait(&events);
