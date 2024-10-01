@@ -13,27 +13,22 @@ pub const Hash_map = std.AutoHashMap(usize, ServerData);
 
 pub const RoundRobin = struct {
     const max_attempts: u32 = 5; // todo : add as an option to config file
-    servers: Hash_map = undefined,
-    allocator: std.mem.Allocator,
 
-    pub fn init(servers: []Server, allocator: std.mem.Allocator) !RoundRobin {
+    fn init(servers: []Server, allocator: std.mem.Allocator) !Hash_map {
         var backends = Hash_map.init(allocator);
 
         for (servers, 0..) |value, i| {
             try backends.put(i, .{ .server = value, .attempts = 0 });
         }
 
-        return RoundRobin{
-            .servers = backends,
-            .allocator = allocator,
-        };
+        return backends;
     }
 
-    pub fn deinit(self: *RoundRobin) void {
-        self.servers.deinit();
-    }
+    pub fn handle(self: *RoundRobin, tcp_server: *std.net.Server, epoll: Epoll, servers: []Server, allocator: std.mem.Allocator) !void {
+        _ = self;
+        var backends = try init(servers, allocator);
+        defer backends.deinit();
 
-    pub fn handle(self: *RoundRobin, tcp_server: *std.net.Server, epoll: Epoll, allocator: std.mem.Allocator) !void {
         var events: [1024]std.os.linux.epoll_event = undefined;
         var server_key: usize = 0;
 
@@ -45,7 +40,7 @@ pub const RoundRobin = struct {
                 } else {
                     const client_fd = event.data.fd;
                     var servers_down: usize = 0;
-                    try self.handleClientRequest(&servers_down, &server_key, client_fd, allocator);
+                    try handleClientRequest(&backends, &servers_down, &server_key, client_fd, allocator);
                     _ = std.posix.close(client_fd);
                 }
             }
@@ -62,8 +57,8 @@ pub const RoundRobin = struct {
         }
     }
 
-    fn handleClientRequest(self: *RoundRobin, servers_down: *usize, server_key: *usize, client_fd: std.os.linux.fd_t, allocator: std.mem.Allocator) !void {
-        const servers_count = self.servers.count();
+    fn handleClientRequest(backends: *Hash_map, servers_down: *usize, server_key: *usize, client_fd: std.os.linux.fd_t, allocator: std.mem.Allocator) !void {
+        const servers_count = backends.count();
 
         const request_buffer = try allocator.alloc(u8, 4094);
         defer allocator.free(request_buffer);
@@ -74,26 +69,26 @@ pub const RoundRobin = struct {
         };
 
         while (servers_count > servers_down.*) {
-            if (self.servers.get(server_key.*)) |server_to_run| {
+            if (backends.get(server_key.*)) |server_to_run| {
                 var current_server = server_to_run;
                 if (current_server.attempts >= max_attempts) {
                     servers_down.* += 1;
                 }
 
                 const backend_fd = ops.connectToBackend(current_server.server.host, current_server.server.port);
-                defer std.posix.close(backend_fd);
 
                 if (backend_fd <= 0) {
                     current_server.attempts += 1;
-                    try self.servers.put(server_key.*, current_server);
+                    try backends.put(server_key.*, current_server);
                     findNextServer(servers_count, server_key, current_server);
                     continue;
                 }
+                defer std.posix.close(backend_fd);
 
                 ops.forwardRequestToBackend(backend_fd, request) catch {
                     std.posix.close(backend_fd);
                     current_server.attempts += 1;
-                    try self.servers.put(server_key.*, current_server);
+                    try backends.put(server_key.*, current_server);
                     findNextServer(servers_count, server_key, current_server);
                     continue;
                 };
@@ -104,14 +99,14 @@ pub const RoundRobin = struct {
                 ops.forwardResponseToClient(backend_fd, client_fd, response_buffer) catch {
                     std.posix.close(backend_fd);
                     current_server.attempts += 1;
-                    try self.servers.put(server_key.*, current_server);
+                    try backends.put(server_key.*, current_server);
                     findNextServer(servers_count, server_key, current_server);
                     continue;
                 };
 
                 if (current_server.attempts > 0) {
                     current_server.attempts = 0;
-                    try self.servers.put(server_key.*, current_server);
+                    try backends.put(server_key.*, current_server);
                 }
                 findNextServer(servers_count, server_key, current_server);
                 break;

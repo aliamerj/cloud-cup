@@ -34,14 +34,13 @@ pub const Config = struct {
         defer _ = gpa.deinit();
         const allocator = gpa.allocator();
 
-        var strategy = getHttpStrategy(self.options.http.httpSetup(allocator)) catch |err| {
+        var strategy = getHttpStrategy(self.options.http.httpSetup()) catch |err| {
             std.log.err("Unsupported load balancing Strategy: '{s}'. The method '{s}' is not supported by the current load balancer configuration.", .{
                 self.options.http.method.?,
                 self.options.http.method.?,
             });
             return err;
         };
-        defer strategy.deinit();
 
         const server_addy = try std.net.Address.parseIp4(self.options.host, self.options.port);
         var tcp_server = try server_addy.listen(.{
@@ -49,11 +48,12 @@ pub const Config = struct {
             .reuse_address = true,
         });
         defer tcp_server.deinit();
+
         const epoll = try Epoll.init(tcp_server);
         defer epoll.deinit();
 
         std.log.info("Server listening on {s}:{any}\n", .{ self.options.host, self.options.port });
-        try strategy.handle(&tcp_server, epoll, allocator);
+        try strategy.handle(&tcp_server, epoll, self.options.http.servers, allocator);
     }
 
     fn getHttpStrategy(strategy: ?Strategy) !Strategy {
