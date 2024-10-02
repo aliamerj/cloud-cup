@@ -6,9 +6,9 @@ const Epoll = @import("../utils/epoll.zig").Epoll;
 pub const Strategy = union(enum) {
     round_robin: *Round_robin,
 
-    pub fn handle(self: Strategy, server: *std.net.Server, epoll: Epoll, servers: []Server, allocator: std.mem.Allocator) !void {
+    pub fn handle(self: Strategy, server: *std.net.Server, epoll: Epoll, servers: []Server) !void {
         switch (self) {
-            inline else => |strategy| try strategy.handle(server, epoll, servers, allocator),
+            inline else => |strategy| try strategy.handle(server, epoll, servers),
         }
     }
 };

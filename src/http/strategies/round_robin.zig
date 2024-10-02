@@ -24,8 +24,12 @@ pub const RoundRobin = struct {
         return backends;
     }
 
-    pub fn handle(self: *RoundRobin, tcp_server: *std.net.Server, epoll: Epoll, servers: []Server, allocator: std.mem.Allocator) !void {
+    pub fn handle(self: *RoundRobin, tcp_server: *std.net.Server, epoll: Epoll, servers: []Server) !void {
         _ = self;
+        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+        defer _ = gpa.deinit();
+        const allocator = gpa.allocator();
+
         var backends = try init(servers, allocator);
         defer backends.deinit();
 
@@ -36,7 +40,7 @@ pub const RoundRobin = struct {
             const nfds = epoll.wait(&events);
             for (events[0..nfds]) |event| {
                 if (event.data.fd == tcp_server.stream.handle) {
-                    try acceptIncomingConnections(tcp_server, epoll);
+                    try ops.acceptIncomingConnections(tcp_server, epoll);
                 } else {
                     const client_fd = event.data.fd;
                     var servers_down: usize = 0;
@@ -44,16 +48,6 @@ pub const RoundRobin = struct {
                     _ = std.posix.close(client_fd);
                 }
             }
-        }
-    }
-
-    fn acceptIncomingConnections(tcp_server: *std.net.Server, epoll: Epoll) !void {
-        while (true) {
-            const conn = tcp_server.accept() catch |err| {
-                if (err == error.WouldBlock) break; // No more connections to accept
-                return err;
-            };
-            try epoll.new(conn.stream);
         }
     }
 

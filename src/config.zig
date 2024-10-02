@@ -30,10 +30,6 @@ pub const Config = struct {
     }
 
     pub fn run(self: *const Config) !void {
-        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-        defer _ = gpa.deinit();
-        const allocator = gpa.allocator();
-
         var strategy = getHttpStrategy(self.options.http.httpSetup()) catch |err| {
             std.log.err("Unsupported load balancing Strategy: '{s}'. The method '{s}' is not supported by the current load balancer configuration.", .{
                 self.options.http.method.?,
@@ -53,7 +49,7 @@ pub const Config = struct {
         defer epoll.deinit();
 
         std.log.info("Server listening on {s}:{any}\n", .{ self.options.host, self.options.port });
-        try strategy.handle(&tcp_server, epoll, self.options.http.servers, allocator);
+        try strategy.handle(&tcp_server, epoll, self.options.http.servers);
     }
 
     fn getHttpStrategy(strategy: ?Strategy) !Strategy {
