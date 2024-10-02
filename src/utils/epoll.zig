@@ -5,7 +5,7 @@ pub const Epoll = struct {
 
     pub fn init(tcp: std.net.Server) !Epoll {
         const epoll_fd = try std.posix.epoll_create1(0);
-        try setNonblock(tcp.stream);
+        try setNonblock(tcp.stream.handle);
 
         try registerEpoll(epoll_fd, tcp.stream.handle, true);
 
@@ -22,17 +22,16 @@ pub const Epoll = struct {
         return std.os.linux.epoll_wait(self.epoll_fd, events, 1024, -1);
     }
 
-    pub fn new(self: *const Epoll, stream: std.net.Stream) !void {
-        const client_fd = stream.handle;
-        try setNonblock(stream);
+    pub fn new(self: *const Epoll, client_fd: std.posix.fd_t) !void {
+        try setNonblock(client_fd);
         try registerEpoll(self.epoll_fd, client_fd, false);
     }
 
-    fn setNonblock(conn: std.net.Stream) !void {
-        var flags = try std.posix.fcntl(conn.handle, std.posix.F.GETFL, 0);
+    fn setNonblock(fd: std.posix.fd_t) !void {
+        var flags = try std.posix.fcntl(fd, std.posix.F.GETFL, 0);
         var flags_s: *std.posix.O = @ptrCast(&flags);
         flags_s.NONBLOCK = true;
-        _ = try std.posix.fcntl(conn.handle, std.posix.F.SETFL, flags);
+        _ = try std.posix.fcntl(fd, std.posix.F.SETFL, flags);
     }
 
     fn registerEpoll(epoll_fd: std.os.linux.fd_t, client_fd: i32, isNew: bool) !void {

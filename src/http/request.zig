@@ -9,7 +9,7 @@ pub fn acceptIncomingConnections(tcp_server: *std.net.Server, epoll: Epoll) !voi
             if (err == error.WouldBlock) break; // No more connections to accept
             return err;
         };
-        try epoll.new(conn.stream);
+        try epoll.new(conn.stream.handle);
     }
 }
 

@@ -32,8 +32,8 @@ pub const Config = struct {
     pub fn run(self: *const Config) !void {
         var strategy = getHttpStrategy(self.options.http.httpSetup()) catch |err| {
             std.log.err("Unsupported load balancing Strategy: '{s}'. The method '{s}' is not supported by the current load balancer configuration.", .{
-                self.options.http.method.?,
-                self.options.http.method.?,
+                self.options.http.strategy.?,
+                self.options.http.strategy.?,
             });
             return err;
         };

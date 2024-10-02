@@ -12,8 +12,6 @@ const ServerData = struct {
 pub const Hash_map = std.AutoHashMap(usize, ServerData);
 
 pub const RoundRobin = struct {
-    const max_attempts: u32 = 5; // todo : add as an option to config file
-
     fn init(servers: []Server, allocator: std.mem.Allocator) !Hash_map {
         var backends = Hash_map.init(allocator);
 
@@ -65,7 +63,7 @@ pub const RoundRobin = struct {
         while (servers_count > servers_down.*) {
             if (backends.get(server_key.*)) |server_to_run| {
                 var current_server = server_to_run;
-                if (current_server.attempts >= max_attempts) {
+                if (current_server.attempts >= current_server.server.max_failure.?) {
                     servers_down.* += 1;
                 }
 
@@ -111,7 +109,7 @@ pub const RoundRobin = struct {
 
     fn findNextServer(servers_number: usize, server_key: *usize, server_data: ServerData) void {
         // Skip the current server if its attempts have reached the max
-        if (server_data.attempts >= max_attempts) {
+        if (server_data.attempts >= server_data.server.max_failure.?) {
             server_key.* = (server_key.* + 1) % servers_number;
             return;
         }
