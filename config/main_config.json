@@ -1,23 +1,39 @@
 {
-  "host": "127.0.0.1",
-  "port": 8080,
-  "http": {
-    "servers": [
-      {
-        "host": "127.0.0.1",
-        "port": 8081,
-        "max_failure": 5
-      },
-      {
-        "host": "127.0.0.1",
-        "port": 8082,
-        "max_failure": 5
-      },
-      {
-        "host": "127.0.0.1",
-        "port": 8083,
-        "max_failure": 5
-      }
-    ]
+  "root": "127.0.0.1:8080",
+  "routes": {
+    "/": {
+      "backends": [
+        {
+          "host": "127.0.0.1:8081",
+          "max_failure": 5
+        },
+        {
+          "host": "127.0.0.1:8082",
+          "max_failure": 5
+        },
+        {
+          "host": "127.0.0.1:8083",
+          "max_failure": 5
+        }
+      ],
+      "strategy": "round-robin"
+    },
+    "/game": {
+      "backends": [
+        {
+          "host": "127.0.0.1:8081",
+          "max_failure": 5
+        },
+        {
+          "host": "127.0.0.1:8082",
+          "max_failure": 5
+        },
+        {
+          "host": "127.0.0.1:8083",
+          "max_failure": 5
+        }
+      ],
+      "strategy": "round-robin"
+    }
   }
 }

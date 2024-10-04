@@ -1,18 +1,18 @@
 const std = @import("std");
-const config = @import("config.zig");
+const Config = @import("config/config.zig").Config;
+const Server = @import("server.zig").Server;
 
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const conf = config.Config.init("config/main_config.json", allocator) catch |err| {
+    var conf = Config.init("config/main_config.json", allocator) catch |err| {
         std.log.err("Failed to load configuration file 'config/main_config.json': {any}", .{err});
         return;
     };
+    defer conf.deinitBuilder();
 
-    conf.run() catch |err| {
-        std.debug.print("Failed to connect: {}\n", .{err});
-        return;
-    };
+    var server = Server.init(conf);
+    try server.run();
 }
