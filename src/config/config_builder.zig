@@ -34,9 +34,17 @@ pub const Builder = struct {
         switch (routes_value) {
             .object => |routes_obj| {
                 var it = routes_obj.iterator();
+                var has_main_route = false;
+
                 while (it.next()) |entry| {
+                    if (hash_map.get(entry.key_ptr.*) != null) return error.DuplicateRoute;
                     const route = try validateRoute(entry.value_ptr.*, allocator);
+                    if (std.mem.eql(u8, entry.key_ptr.*, "/")) has_main_route = true;
                     try hash_map.put(entry.key_ptr.*, route);
+                }
+
+                if (!has_main_route) {
+                    return error.MissingMainRoute;
                 }
             },
             else => return error.InvalidRoutesField,
@@ -117,6 +125,7 @@ pub const Builder = struct {
     fn validateBackends(backends_value: std.json.Value, allocator: std.mem.Allocator) ![]Backend {
         switch (backends_value) {
             .array => |backends_array| {
+                if (backends_array.items.len == 0) return error.EmptyBackendsArray;
                 var backends = try allocator.alloc(Backend, backends_array.items.len);
                 for (backends_array.items, 0..) |backend_value, i| {
                     backends[i] = try validateBackend(backend_value);
