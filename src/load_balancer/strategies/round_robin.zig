@@ -37,22 +37,35 @@ pub const RoundRobin = struct {
         self.backends.deinit();
     }
 
-    pub fn handle(self: *RoundRobin, client_fd: std.posix.fd_t, allocator: std.mem.Allocator) !void {
+    pub fn handle(
+        self: *RoundRobin,
+        client_fd: std.posix.fd_t,
+        allocator: std.mem.Allocator,
+        request: []u8,
+        strategy_hash: *std.StringHashMap(Strategy),
+        path: []const u8,
+    ) !void {
         var servers_down: usize = 0;
-        try self.handleClientRequest(&servers_down, client_fd, allocator);
+        try self.handleClientRequest(
+            &servers_down,
+            client_fd,
+            allocator,
+            request,
+            strategy_hash,
+            path,
+        );
     }
 
-    fn handleClientRequest(self: *RoundRobin, servers_down: *usize, client_fd: std.posix.fd_t, allocator: std.mem.Allocator) !void {
+    fn handleClientRequest(
+        self: *RoundRobin,
+        servers_down: *usize,
+        client_fd: std.posix.fd_t,
+        allocator: std.mem.Allocator,
+        request: []u8,
+        strategy_hash: *std.StringHashMap(Strategy),
+        path: []const u8,
+    ) !void {
         const servers_count = self.backends.count();
-
-        const request_buffer = try allocator.alloc(u8, 4094);
-        defer allocator.free(request_buffer);
-
-        const request = ops.readClientRequest(client_fd, request_buffer) catch {
-            try ops.sendBadGateway(client_fd);
-            return;
-        };
-        std.debug.print("request {s}\n", .{request});
 
         while (servers_count > servers_down.*) {
             if (self.backends.get(self.backend_key)) |server_to_run| {
@@ -60,13 +73,13 @@ pub const RoundRobin = struct {
                 if (current_server.attempts >= current_server.server.max_failure.?) {
                     servers_down.* += 1;
                 }
-
-                const backend_fd = ops.connectToBackend(try utils.parseServerAddress(current_server.server.host));
+                const server_address = try utils.parseServerAddress(current_server.server.host);
+                const backend_fd = ops.connectToBackend(server_address);
 
                 if (backend_fd <= 0) {
                     current_server.attempts += 1;
                     try self.backends.put(self.backend_key, current_server);
-                    self.findNextServer(servers_count);
+                    self.findNextServer(servers_count, strategy_hash, path);
                     continue;
                 }
                 defer std.posix.close(backend_fd);
@@ -75,7 +88,7 @@ pub const RoundRobin = struct {
                     std.posix.close(backend_fd);
                     current_server.attempts += 1;
                     try self.backends.put(self.backend_key, current_server);
-                    self.findNextServer(servers_count);
+                    self.findNextServer(servers_count, strategy_hash, path);
                     continue;
                 };
 
@@ -86,7 +99,7 @@ pub const RoundRobin = struct {
                     std.posix.close(backend_fd);
                     current_server.attempts += 1;
                     try self.backends.put(self.backend_key, current_server);
-                    self.findNextServer(servers_count);
+                    self.findNextServer(servers_count, strategy_hash, path);
                     continue;
                 };
 
@@ -94,16 +107,19 @@ pub const RoundRobin = struct {
                     current_server.attempts = 0;
                     try self.backends.put(self.backend_key, current_server);
                 }
-                self.findNextServer(servers_count);
+                self.findNextServer(servers_count, strategy_hash, path);
                 break;
             }
         }
         try ops.sendBadGateway(client_fd);
     }
 
-    fn findNextServer(self: *RoundRobin, servers_number: usize) void {
+    fn findNextServer(self: *RoundRobin, servers_number: usize, strategy_hash: *std.StringHashMap(Strategy), path: []const u8) void {
 
         // Move to the next server, wrapping around if necessary
         self.backend_key = (self.backend_key + 1) % servers_number;
+
+        strategy_hash.put(path, .{ .round_robin = self.* }) catch unreachable;
+        std.debug.print("self backend_key {d}\n", .{self.backend_key});
     }
 };

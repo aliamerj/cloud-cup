@@ -1,35 +1,51 @@
 {
   "root": "127.0.0.1:8080",
   "routes": {
-    "/": {
+    "*": {
       "backends": [
         {
           "host": "127.0.0.1:8081",
           "max_failure": 5
-        },
+        }
+      ]
+    },
+    "/": {
+      "backends": [
         {
           "host": "127.0.0.1:8082",
           "max_failure": 5
-        },
+        }
+      ]
+    },
+    "/game/*": {
+      "backends": [
         {
           "host": "127.0.0.1:8083",
           "max_failure": 5
+        },
+        {
+          "host": "127.0.0.1:8084",
+          "max_failure": 5
+        },
+        {
+          "host": "127.0.0.1:8085",
+          "max_failure": 3
         }
       ],
       "strategy": "round-robin"
     },
-    "/game": {
+    "/game/dev": {
       "backends": [
         {
-          "host": "127.0.0.1:8081",
+          "host": "127.0.0.1:8086",
           "max_failure": 5
         },
         {
-          "host": "127.0.0.1:8082",
+          "host": "127.0.0.1:8087",
           "max_failure": 5
         },
         {
-          "host": "127.0.0.1:8083",
+          "host": "127.0.0.1:8088",
           "max_failure": 5
         }
       ],

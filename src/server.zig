@@ -60,10 +60,46 @@ pub const Server = struct {
                     try ops.acceptIncomingConnections(@constCast(&tcp_server), epoll);
                 } else {
                     const client_fd = event.data.fd;
-                    var strategy = strategy_hash.get("/").?;
-                    try strategy.handle(client_fd, allocator);
 
-                    // try handleClientRequest(&backends, &servers_down, &server_key, client_fd, allocator);
+                    const request_buffer = try allocator.alloc(u8, 4094);
+                    defer allocator.free(request_buffer);
+
+                    const request = ops.readClientRequest(client_fd, request_buffer) catch {
+                        try ops.sendBadGateway(client_fd);
+                        return;
+                    };
+
+                    const path_info = utils.extractPath(request) catch {
+                        try ops.sendBadGateway(client_fd);
+                        return;
+                    };
+
+                    const selected_strategy = strategy_hash.get(path_info.path);
+                    if (selected_strategy) |strategy| {
+                        var stra = @constCast(&strategy);
+                        try stra.handle(client_fd, allocator, request, @constCast(&strategy_hash), path_info.path);
+                        _ = std.posix.close(client_fd);
+                        continue;
+                    }
+
+                    if (path_info.sub) {
+                        var paths = std.mem.split(u8, path_info.path[1..], "/");
+                        var matched = false;
+                        while (paths.next()) |path| {
+                            std.debug.print("paths is {s}\n", .{path});
+                            const route = try std.fmt.allocPrint(allocator, "/{s}/*", .{path});
+                            defer allocator.free(route);
+                            var strategy = strategy_hash.get(route) orelse continue;
+                            try strategy.handle(client_fd, allocator, request, @constCast(&strategy_hash), route);
+                            _ = std.posix.close(client_fd);
+                            matched = true;
+                            break;
+                        }
+                        if (matched) continue;
+                    }
+
+                    var general_strategy = strategy_hash.get("*") orelse return error.MissingMainRoute;
+                    try general_strategy.handle(client_fd, allocator, request, @constCast(&strategy_hash), "*");
                     _ = std.posix.close(client_fd);
                 }
             }
