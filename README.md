@@ -30,31 +30,77 @@ You can configure Cloud-Cup by editing the `config/main_config.json` file. This 
 
 Note: By default, Cloud-Cup will use the Round-Robin strategy if the `strategy` field  under the http flag is not specified.
 
+## Configuration Structure
+
+The routing configuration is defined in a JSON format and contains two main components:
+
+  1. Root Address: The address where the server listens for incoming requests.
+  2. Routes: A mapping of URL paths to backend services.
+
 ## example 
 ```json
 {
-  "host": "127.0.0.1",
-  "port": 8080,
-  "http": {
-
-    "servers": [
-      {
-        "host": "127.0.0.1",
-        "port": 8081
-      },
-      {
-        "host": "127.0.0.1",
-        "port": 8082
-      },
-      {
-        "host": "127.0.0.1",
-        "port": 8083
-      }
-    ]
+  "root": "127.0.0.1:8080",
+  "routes": {
+    "*": {
+      "backends": [
+        {
+          "host": "127.0.0.1:8081",
+          "max_failure": 5
+        }
+      ]
+    },
+    "/": {
+      "backends": [
+        {
+          "host": "127.0.0.1:8082",
+          "max_failure": 5
+        }
+      ]
+    },
+    "/game/*": {
+      "backends": [
+        {
+          "host": "127.0.0.1:8083",
+          "max_failure": 5
+        },
+        {
+          "host": "127.0.0.1:8084",
+          "max_failure": 5
+        },
+        {
+          "host": "127.0.0.1:8085",
+          "max_failure": 3
+        }
+      ],
+      "strategy": "round-robin"
+    },
+    "/game/dev": {
+      "backends": [
+        {
+          "host": "127.0.0.1:8086",
+          "max_failure": 5
+        },
+        {
+          "host": "127.0.0.1:8087",
+          "max_failure": 5
+        },
+        {
+          "host": "127.0.0.1:8088",
+          "max_failure": 5
+        }
+      ],
+      "strategy": "round-robin"
+    }
   }
 }
 ```
-In this example, the load balancer will distribute traffic between three backend servers running on ports 8081, 8082, and 8083 on the localhost.
+In this example, the load balancer will distribute traffic between three backend servers running on ports 8081, 8082,..etc on the localhost.
+
+## Default Fallback
+
+  - If neither an exact nor a wildcard match is found, the server falls back to the default route defined as `*`.
+  - This route is used to catch all other requests not explicitly defined in the configuration.
 
 # 📊 Benchmarking
 Here’s the current performance benchmark for Cloud-Cup using ApacheBench:
