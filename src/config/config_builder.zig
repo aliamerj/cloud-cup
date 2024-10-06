@@ -40,7 +40,7 @@ pub const Builder = struct {
                     if (hash_map.get(entry.key_ptr.*) != null) return error.DuplicateRoute;
                     const route = try validateRoute(entry.value_ptr.*, allocator);
                     if (std.mem.eql(u8, entry.key_ptr.*, "*")) has_main_route = true;
-                    if (std.mem.endsWith(u8, entry.key_ptr.*, "/")) return error.InvalidRouteEndWith;
+                    if (entry.key_ptr.*.len > 1 and std.mem.endsWith(u8, entry.key_ptr.*, "/")) return error.InvalidRouteEndWith;
                     try hash_map.put(entry.key_ptr.*, route);
                 }
 

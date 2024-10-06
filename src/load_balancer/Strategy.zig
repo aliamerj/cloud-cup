@@ -14,15 +14,15 @@ pub const Strategy = union(enum) {
     pub fn handle(
         self: *Strategy,
         client_fd: std.posix.fd_t,
-        allocator: std.mem.Allocator,
         request: []u8,
+        response: []u8,
         strategy_hash: *std.StringHashMap(Strategy),
         path: []const u8,
     ) !void {
         switch (self.*) {
             inline else => |strategy| {
                 var stra = @constCast(&strategy);
-                try stra.handle(client_fd, allocator, request, strategy_hash, path);
+                try stra.handle(client_fd, request, response, strategy_hash, path);
             },
         }
     }

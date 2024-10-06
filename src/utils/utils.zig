@@ -37,7 +37,7 @@ pub fn extractPath(request: []const u8) !ExtractedPath {
         path = path[0..query_index];
     }
 
-    if (std.mem.endsWith(u8, path, "/")) {
+    if (path.len > 1 and std.mem.endsWith(u8, path, "/")) {
         path = path[0 .. path.len - 1];
     }
 

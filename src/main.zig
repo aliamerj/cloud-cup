@@ -3,7 +3,10 @@ const Config = @import("config/config.zig").Config;
 const Server = @import("server.zig").Server;
 
 pub fn main() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
     defer arena.deinit();
     const allocator = arena.allocator();
 
@@ -13,6 +16,6 @@ pub fn main() !void {
     };
     defer conf.deinitBuilder();
 
-    var server = Server.init(conf);
+    var server = Server.init(conf, allocator);
     try server.run();
 }
