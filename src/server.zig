@@ -5,6 +5,9 @@ const Epoll = @import("http/epoll_handler.zig").Epoll;
 const ops = @import("http/server_operations.zig");
 const utils = @import("utils/utils.zig");
 
+const Pool = std.Thread.Pool;
+const WaitGroup = std.Thread.WaitGroup;
+
 pub const Server = struct {
     config: Config,
     allocator: std.mem.Allocator,
@@ -48,11 +51,21 @@ pub const Server = struct {
         const epoll = try Epoll.init(tcp_server);
         defer epoll.deinit();
 
+        var thread_safe_arena: std.heap.ThreadSafeAllocator = .{
+            .child_allocator = allocator,
+        };
+        const arena = thread_safe_arena.allocator();
+
+        var thread_pool: Pool = undefined;
+        try thread_pool.init(Pool.Options{
+            .allocator = arena,
+        });
+        defer thread_pool.deinit();
+
+        var wait_group: WaitGroup = undefined;
+        wait_group.reset();
+
         var events: [1024]std.os.linux.epoll_event = undefined;
-        const request_buffer = try allocator.alloc(u8, 4094);
-        const response = try allocator.alloc(u8, 4094);
-        defer allocator.free(request_buffer);
-        defer allocator.free(response);
 
         while (true) {
             const nfds = epoll.wait(&events);
@@ -62,47 +75,71 @@ pub const Server = struct {
                 } else {
                     const client_fd = event.data.fd;
 
-                    const request = ops.readClientRequest(client_fd, request_buffer) catch {
-                        try ops.sendBadGateway(client_fd);
-                        return;
-                    };
-
-                    const path_info = utils.extractPath(request) catch {
-                        try ops.sendBadGateway(client_fd);
-                        return;
-                    };
-
-                    const selected_strategy = strategy_hash.get(path_info.path);
-                    if (selected_strategy) |strategy| {
-                        var stra = @constCast(&strategy);
-                        try stra.handle(client_fd, request, response, @constCast(&strategy_hash), path_info.path);
-                        try ops.closeConnection(epoll.epoll_fd, client_fd);
-                        continue;
-                    }
-
-                    if (path_info.sub) {
-                        var paths = std.mem.split(u8, path_info.path[1..], "/");
-                        var matched = false;
-                        while (paths.next()) |path| {
-                            const route = try std.fmt.allocPrint(allocator, "/{s}/*", .{path});
-                            defer allocator.free(route);
-                            var strategy = strategy_hash.get(route) orelse continue;
-                            try strategy.handle(client_fd, request, response, @constCast(&strategy_hash), route);
-                            try ops.closeConnection(epoll.epoll_fd, client_fd);
-                            matched = true;
-                            break;
-                        }
-                        if (matched) continue;
-                    }
-
-                    var general_strategy = strategy_hash.get("*") orelse return error.MissingMainRoute;
-                    try general_strategy.handle(client_fd, request, response, @constCast(&strategy_hash), "*");
-                    try ops.closeConnection(epoll.epoll_fd, client_fd);
+                    try thread_pool.spawn(isPrimeRoutine, .{
+                        &wait_group,
+                        &arena,
+                        epoll.epoll_fd,
+                        client_fd,
+                        strategy_hash,
+                    });
                 }
             }
         }
+        // Work on threads after scheduling all tasks
+        thread_pool.waitAndWork(&wait_group);
     }
 
+    pub fn isPrimeRoutine(
+        wait_group: *WaitGroup,
+        allocator: *const std.mem.Allocator,
+        epoll_fd: std.posix.fd_t,
+        client_fd: std.posix.fd_t,
+        strategy_hash: std.StringHashMap(Strategy),
+    ) void {
+        wait_group.start();
+        defer wait_group.finish();
+
+        const request_buffer = allocator.alloc(u8, 4094) catch unreachable;
+        const response = allocator.alloc(u8, 4094) catch unreachable;
+        defer allocator.free(request_buffer);
+        defer allocator.free(response);
+
+        const request = ops.readClientRequest(client_fd, request_buffer) catch {
+            ops.sendBadGateway(client_fd) catch {};
+            return;
+        };
+
+        const path_info = utils.extractPath(request) catch {
+            ops.sendBadGateway(client_fd) catch {};
+            return;
+        };
+
+        const selected_strategy = strategy_hash.get(path_info.path);
+        if (selected_strategy) |strategy| {
+            var stra = @constCast(&strategy);
+            stra.handle(client_fd, request, response, @constCast(&strategy_hash), path_info.path) catch {};
+            ops.closeConnection(epoll_fd, client_fd) catch {};
+            return;
+        }
+
+        if (path_info.sub) {
+            var paths = std.mem.split(u8, path_info.path[1..], "/");
+            while (paths.next()) |path| {
+                const route = std.fmt.allocPrint(allocator.*, "/{s}/*", .{path}) catch {
+                    return;
+                };
+                defer allocator.free(route);
+                var strategy = strategy_hash.get(route) orelse continue;
+                strategy.handle(client_fd, request, response, @constCast(&strategy_hash), route) catch {};
+                ops.closeConnection(epoll_fd, client_fd) catch {};
+                return;
+            }
+        }
+
+        var general_strategy = strategy_hash.get("*") orelse return;
+        general_strategy.handle(client_fd, request, response, @constCast(&strategy_hash), "*") catch {};
+        ops.closeConnection(epoll_fd, client_fd) catch {};
+    }
     // set up load balancer
     fn setupLoadBalancer(self: Server, strategy_hash: *std.StringHashMap(Strategy), allocator: std.mem.Allocator) !void {
         var it = self.config.routes.iterator();

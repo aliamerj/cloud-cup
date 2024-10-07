@@ -13,8 +13,8 @@ pub fn acceptIncomingConnections(tcp_server: *std.net.Server, epoll: Epoll) !voi
     }
 }
 
-pub fn connectToBackend(address: std.net.Address) poxis.fd_t {
-    const stream = std.net.tcpConnectToAddress(address) catch return -1;
+pub fn connectToBackend(address: std.net.Address) !poxis.fd_t {
+    const stream = try std.net.tcpConnectToAddress(address);
     return stream.handle;
 }
 
@@ -32,7 +32,7 @@ pub fn forwardRequestToBackend(backend_fd: poxis.fd_t, request: []u8) !void {
 
 pub fn forwardResponseToClient(backend_fd: poxis.fd_t, client_fd: poxis.fd_t, response_buffer: []u8) !void {
     while (true) {
-        const response_len = try poxis.read(backend_fd, response_buffer);
+        const response_len = try poxis.recv(backend_fd, response_buffer, 0);
         if (response_len == 0) break; // EOF reached
 
         _ = poxis.send(client_fd, response_buffer[0..response_len], 0) catch |err| {

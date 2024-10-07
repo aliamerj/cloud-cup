@@ -70,19 +70,23 @@ pub const RoundRobin = struct {
         while (servers_count > servers_down.*) {
             if (self.backends.get(self.backend_key)) |server_to_run| {
                 var current_server = server_to_run;
+
+                // Check if max failures have been exceeded
                 if (current_server.attempts >= current_server.server.max_failure.?) {
                     servers_down.* += 1;
-                }
-                const server_address = try utils.parseServerAddress(current_server.server.host);
-                const backend_fd = ops.connectToBackend(server_address);
-
-                if (backend_fd <= 0) {
-                    current_server.attempts += 1;
-                    try self.backends.put(self.backend_key, current_server);
                     self.findNextServer(servers_count, strategy_hash, path);
                     continue;
                 }
 
+                const server_address = try utils.parseServerAddress(current_server.server.host);
+                const backend_fd = ops.connectToBackend(server_address) catch {
+                    current_server.attempts += 1;
+                    try self.backends.put(self.backend_key, current_server);
+                    self.findNextServer(servers_count, strategy_hash, path);
+                    continue;
+                };
+
+                // Forward request to backend
                 ops.forwardRequestToBackend(backend_fd, request) catch {
                     std.posix.close(backend_fd);
                     current_server.attempts += 1;
@@ -91,6 +95,7 @@ pub const RoundRobin = struct {
                     continue;
                 };
 
+                // Forward response back to client
                 ops.forwardResponseToClient(backend_fd, client_fd, response) catch {
                     std.posix.close(backend_fd);
                     current_server.attempts += 1;
@@ -99,18 +104,31 @@ pub const RoundRobin = struct {
                     continue;
                 };
 
+                // Reset attempts on successful connection
                 if (current_server.attempts > 0) {
                     current_server.attempts = 0;
                     try self.backends.put(self.backend_key, current_server);
                 }
+
+                // Successfully handled the request, find the next server
                 self.findNextServer(servers_count, strategy_hash, path);
-                break;
+                return;
             }
+
+            // No more valid servers
+            try ops.sendBadGateway(client_fd);
+            return;
         }
+
+        // No backends available, return a 502 error
         try ops.sendBadGateway(client_fd);
     }
-
-    fn findNextServer(self: *RoundRobin, servers_number: usize, strategy_hash: *std.StringHashMap(Strategy), path: []const u8) void {
+    fn findNextServer(
+        self: *RoundRobin,
+        servers_number: usize,
+        strategy_hash: *std.StringHashMap(Strategy),
+        path: []const u8,
+    ) void {
         // Move to the next server, wrapping around if necessary
         self.backend_key = (self.backend_key + 1) % servers_number;
         strategy_hash.put(path, .{ .round_robin = self.* }) catch unreachable;
