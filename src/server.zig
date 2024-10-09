@@ -4,6 +4,7 @@ const Strategy = @import("load_balancer/Strategy.zig").Strategy;
 const Epoll = @import("http/epoll_handler.zig").Epoll;
 const ops = @import("http/server_operations.zig");
 const utils = @import("utils/utils.zig");
+const cli = @import("cup_cli/cup_cli.zig");
 
 const Pool = std.Thread.Pool;
 const WaitGroup = std.Thread.WaitGroup;
@@ -43,6 +44,11 @@ pub const Server = struct {
         });
         defer tcp_server.deinit();
         std.log.info("Server listening on {s}\n", .{self.config.root});
+
+        // cli set-up
+        var thread = try std.Thread.spawn(.{}, cli.setupCliSocket, .{self.config});
+        defer thread.join();
+
         try startServer(tcp_server, strategy_hash, self.allocator);
     }
 
@@ -75,7 +81,7 @@ pub const Server = struct {
                 } else {
                     const client_fd = event.data.fd;
 
-                    try thread_pool.spawn(isPrimeRoutine, .{
+                    try thread_pool.spawn(handleRequest, .{
                         &wait_group,
                         &arena,
                         epoll.epoll_fd,
@@ -89,7 +95,7 @@ pub const Server = struct {
         thread_pool.waitAndWork(&wait_group);
     }
 
-    pub fn isPrimeRoutine(
+    fn handleRequest(
         wait_group: *WaitGroup,
         allocator: *const std.mem.Allocator,
         epoll_fd: std.posix.fd_t,
