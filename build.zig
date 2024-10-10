@@ -15,19 +15,12 @@ pub fn build(b: *std.Build) void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
-    // // Get the "zig-aio" dependency from "build.zig.zon"
-    const zig_aio = b.dependency("zig-aio", .{});
-
     const exe = b.addExecutable(.{
         .name = "cloud-cup",
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
-
-    // Import the aio and coro modules from zig-aio
-    exe.root_module.addImport("aio", zig_aio.module("aio"));
-    exe.root_module.addImport("coro", zig_aio.module("coro"));
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
