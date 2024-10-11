@@ -3,7 +3,10 @@ const Config = @import("../config/config.zig").Config;
 const cmd = @import("commands.zig");
 
 pub fn setupCliSocket(config: Config) void {
-    _ = config;
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
     const socket_path = "/tmp/cloud-cup.sock";
 
     // Ensure the socket file does not already exist
@@ -40,7 +43,7 @@ pub fn setupCliSocket(config: Config) void {
             return std.debug.print("CLI Error: {any}\n", .{err});
         };
 
-        cmd.processCLICommand(buffer[0..bytes_read], client_conn) catch |err| {
+        cmd.processCLICommand(buffer[0..bytes_read], client_conn, config, allocator) catch |err| {
             return std.debug.print("CLI Error: {any}\n", .{err});
         };
     }
