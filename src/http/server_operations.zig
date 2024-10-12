@@ -1,6 +1,6 @@
 const std = @import("std");
 const Epoll = @import("../http/epoll_handler.zig").Epoll;
-
+const utils = @import("../utils/utils.zig");
 const poxis = std.posix;
 
 pub fn acceptIncomingConnections(tcp_server: *std.net.Server, epoll: Epoll) !void {
@@ -13,8 +13,9 @@ pub fn acceptIncomingConnections(tcp_server: *std.net.Server, epoll: Epoll) !voi
     }
 }
 
-pub fn connectToBackend(address: std.net.Address) !poxis.fd_t {
-    const stream = try std.net.tcpConnectToAddress(address);
+pub fn connectToBackend(host: []const u8) !poxis.fd_t {
+    const server_address = try utils.parseServerAddress(host);
+    const stream = try std.net.tcpConnectToAddress(server_address);
     return stream.handle;
 }
 

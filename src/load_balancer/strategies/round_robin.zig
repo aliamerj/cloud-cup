@@ -78,8 +78,7 @@ pub const RoundRobin = struct {
                     continue;
                 }
 
-                const server_address = try utils.parseServerAddress(current_server.server.host);
-                const backend_fd = ops.connectToBackend(server_address) catch {
+                const backend_fd = ops.connectToBackend(current_server.server.host) catch {
                     current_server.attempts += 1;
                     try self.backends.put(self.backend_key, current_server);
                     self.findNextServer(servers_count, strategy_hash, path);

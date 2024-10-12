@@ -1,11 +1,16 @@
 const std = @import("std");
 const Config = @import("../config/config.zig").Config;
 const Route = @import("../load_balancer/route.zig").Route;
+const ops = @import("../http/server_operations.zig");
+const Diagnostic = @import("cmd/check/diagnostic.zig").Diagnostic;
+
+const convertToJSONConfig = @import("cmd/show/config.zig").convertToJSONConfig;
 
 const Command = enum {
     ShowStatus,
     ShowConfig,
     Unknown,
+    CheckAll,
 };
 
 pub fn processCLICommand(command: []u8, client_conn: std.net.Server.Connection, config: Config, allocator: std.mem.Allocator) !void {
@@ -21,6 +26,24 @@ pub fn processCLICommand(command: []u8, client_conn: std.net.Server.Connection, 
             defer config_json.deinit();
             _ = try client_conn.stream.writer().writeAll(config_json.items);
         },
+        .CheckAll => {
+            var diagnostices = std.ArrayList(Diagnostic).init(allocator);
+            var string = std.ArrayList(u8).init(allocator);
+            defer diagnostices.deinit();
+            defer string.deinit();
+
+            var routes = config.routes.iterator();
+            while (routes.next()) |kv| {
+                const backends = kv.value_ptr.backends;
+                for (backends) |b| {
+                    const backend = Diagnostic.checkBackend(b.host, kv.key_ptr.*);
+                    try diagnostices.append(backend);
+                }
+            }
+
+            try std.json.stringify(diagnostices.items, .{}, string.writer());
+            _ = try client_conn.stream.writer().writeAll(string.items);
+        },
         .Unknown => {
             const response = "Unknown command";
             _ = try client_conn.stream.writer().writeAll(response);
@@ -31,63 +54,6 @@ pub fn processCLICommand(command: []u8, client_conn: std.net.Server.Connection, 
 fn parseCommand(command: []const u8) Command {
     if (std.mem.eql(u8, command, "show-status\n")) return Command.ShowStatus;
     if (std.mem.eql(u8, command, "show-config\n")) return Command.ShowConfig;
+    if (std.mem.eql(u8, command, "check-all\n")) return Command.CheckAll;
     return Command.Unknown;
-}
-
-fn convertToJSONConfig(config: Config, allocator: std.mem.Allocator) !std.ArrayList(u8) {
-    var strings = std.ArrayList(u8).init(allocator);
-    errdefer strings.deinit();
-    const writer = strings.writer();
-
-    var x = std.json.writeStream(writer, .{});
-    try x.beginObject();
-
-    // Write the "root" field
-    try x.objectField("root");
-    _ = try x.write(config.root); // Use x.write instead of writer.write
-
-    // Write the "routes" field
-    try x.objectField("routes");
-    try x.beginObject();
-
-    // Iterate over the routes hash map and write each route
-    var it = config.routes.iterator();
-    while (it.next()) |kv| {
-        const route_key = kv.key_ptr.*;
-        const route_value = kv.value_ptr.*;
-
-        // Write the route key
-        try x.objectField(route_key);
-
-        // Begin the route object
-        try x.beginObject();
-
-        // Write the "backends" field
-        try x.objectField("backends");
-        try x.beginArray();
-        for (route_value.backends) |backend| {
-            try x.beginObject();
-            try x.objectField("host");
-            try x.write(backend.host);
-            try x.objectField("max_failure");
-            try x.write(backend.max_failure);
-            try x.endObject();
-        }
-        try x.endArray();
-
-        // Write the "strategy" field if it exists
-        try x.objectField("strategy");
-        try x.write(route_value.strategy);
-
-        // End the route object
-        try x.endObject();
-    }
-
-    // End the "routes" object
-    try x.endObject();
-
-    // End the overall JSON object
-    try x.endObject();
-
-    return strings;
 }
