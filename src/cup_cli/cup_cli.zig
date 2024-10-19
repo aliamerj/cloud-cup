@@ -1,12 +1,11 @@
 const std = @import("std");
-const Config = @import("../config/config.zig").Config;
+const Config_Manager = @import("../config/config_managment.zig").Config_Manager;
 const cmd = @import("commands.zig");
 
-pub fn setupCliSocket(config: Config) void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
+pub fn setupCliSocket(
+    config: *Config_Manager,
+    allocator: *const std.mem.Allocator,
+) void {
     const socket_path = "/tmp/cloud-cup.sock";
 
     // Ensure the socket file does not already exist
@@ -43,7 +42,7 @@ pub fn setupCliSocket(config: Config) void {
             return std.debug.print("CLI Error: {any}\n", .{err});
         };
 
-        cmd.processCLICommand(buffer[0..bytes_read], client_conn, config, allocator) catch |err| {
+        cmd.processCLICommand(buffer[0..bytes_read], client_conn, config, allocator.*) catch |err| {
             return std.debug.print("CLI Error: {any}\n", .{err});
         };
     }

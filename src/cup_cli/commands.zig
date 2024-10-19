@@ -1,7 +1,6 @@
 const std = @import("std");
 const Config = @import("../config/config.zig").Config;
-const Route = @import("../load_balancer/route.zig").Route;
-const ops = @import("../http/server_operations.zig");
+const Config_Manager = @import("../config/config_managment.zig").Config_Manager;
 const Diagnostic = @import("cmd/check/diagnostic.zig").Diagnostic;
 
 const convertToJSONConfig = @import("cmd/show/config.zig").convertToJSONConfig;
@@ -9,11 +8,17 @@ const convertToJSONConfig = @import("cmd/show/config.zig").convertToJSONConfig;
 const Command = enum {
     ShowStatus,
     ShowConfig,
-    Unknown,
     CheckAll,
+    ApplyConfig,
+    Unknown,
 };
 
-pub fn processCLICommand(command: []u8, client_conn: std.net.Server.Connection, config: Config, allocator: std.mem.Allocator) !void {
+pub fn processCLICommand(
+    command: []u8,
+    client_conn: std.net.Server.Connection,
+    config_manager: *Config_Manager,
+    allocator: std.mem.Allocator,
+) !void {
 
     // Parse the command
     switch (parseCommand(command)) {
@@ -22,6 +27,7 @@ pub fn processCLICommand(command: []u8, client_conn: std.net.Server.Connection, 
             _ = try client_conn.stream.writer().writeAll(response);
         },
         .ShowConfig => {
+            const config = config_manager.getCurrentConfig();
             const config_json = try convertToJSONConfig(config, allocator);
             defer config_json.deinit();
             _ = try client_conn.stream.writer().writeAll(config_json.items);
@@ -31,6 +37,8 @@ pub fn processCLICommand(command: []u8, client_conn: std.net.Server.Connection, 
             var string = std.ArrayList(u8).init(allocator);
             defer diagnostices.deinit();
             defer string.deinit();
+
+            const config = config_manager.getCurrentConfig();
 
             var routes = config.routes.iterator();
             while (routes.next()) |kv| {
@@ -44,8 +52,32 @@ pub fn processCLICommand(command: []u8, client_conn: std.net.Server.Connection, 
             try std.json.stringify(diagnostices.items, .{}, string.writer());
             _ = try client_conn.stream.writer().writeAll(string.items);
         },
+
+        .ApplyConfig => {
+            var parts = std.mem.split(u8, command, "|");
+            _ = parts.next();
+            const file_path = parts.next();
+
+            if (file_path == null) {
+                _ = try client_conn.stream.writer().writeAll("File path for new config required\n");
+                return;
+            }
+            const config_path = std.mem.trim(u8, file_path.?, "\n");
+
+            const config = config_manager.getCurrentConfig();
+            var new_config = try Config.init(config_path, config.allocator);
+
+            const err = try new_config.applyConfig();
+            if (err != null) {
+                _ = try client_conn.stream.writer().writeAll(err.?.err_message);
+                return;
+            }
+
+            try config_manager.pushNewConfig(new_config);
+            _ = try client_conn.stream.writer().writeAll("new config applied sucessfuly\n");
+        },
         .Unknown => {
-            const response = "Unknown command";
+            const response = "Unknown command\n";
             _ = try client_conn.stream.writer().writeAll(response);
         },
     }
@@ -55,5 +87,6 @@ fn parseCommand(command: []const u8) Command {
     if (std.mem.eql(u8, command, "show-status\n")) return Command.ShowStatus;
     if (std.mem.eql(u8, command, "show-config\n")) return Command.ShowConfig;
     if (std.mem.eql(u8, command, "check-all\n")) return Command.CheckAll;
+    if (std.mem.startsWith(u8, command, "apply-config")) return Command.ApplyConfig;
     return Command.Unknown;
 }

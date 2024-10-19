@@ -5,6 +5,7 @@ const Strategy = @import("../Strategy.zig").Strategy;
 const Epoll = @import("../../http/epoll_handler.zig").Epoll;
 const ops = @import("../../http/server_operations.zig");
 const utils = @import("../../utils/utils.zig");
+const Config = @import("../../config/config.zig").Config;
 
 const ServerData = struct {
     server: Backend,
@@ -42,16 +43,18 @@ pub const RoundRobin = struct {
         client_fd: std.posix.fd_t,
         request: []u8,
         response: []u8,
-        strategy_hash: *std.StringHashMap(Strategy),
+        config: Config,
         path: []const u8,
     ) !void {
         var servers_down: usize = 0;
+        var strategy_hash = config.strategy_hash;
+
         try self.handleClientRequest(
             &servers_down,
             client_fd,
             request,
             response,
-            strategy_hash,
+            &strategy_hash,
             path,
         );
     }
@@ -65,13 +68,13 @@ pub const RoundRobin = struct {
         strategy_hash: *std.StringHashMap(Strategy),
         path: []const u8,
     ) !void {
-        const servers_count = self.backends.count();
+        const backends = strategy_hash.get(path).?.round_robin.backends;
+        const servers_count = backends.count();
 
         while (servers_count > servers_down.*) {
-            if (self.backends.get(self.backend_key)) |server_to_run| {
+            if (backends.get(self.backend_key)) |server_to_run| {
                 var current_server = server_to_run;
 
-                // Check if max failures have been exceeded
                 if (current_server.attempts >= current_server.server.max_failure.?) {
                     servers_down.* += 1;
                     self.findNextServer(servers_count, strategy_hash, path);

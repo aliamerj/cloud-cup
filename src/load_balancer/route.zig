@@ -15,11 +15,10 @@ pub const Route = struct {
             return Strategy{ .round_robin = .{} };
         }
 
-        std.log.err("Unsupported load balancing Strategy: '{s}'. The method '{s}' is not supported by the current load balancer configuration.", .{
-            self.strategy,
+        std.log.err("Unsupported Strategy '{s}' by the current configuration.", .{
             self.strategy,
         });
 
-        return error.Unsupported;
+        return error.UnsupportedStrategy;
     }
 };

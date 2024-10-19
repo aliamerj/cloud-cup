@@ -136,13 +136,4 @@ pub const Builder = struct {
             else => return error.InvalidBackendsArray,
         }
     }
-
-    /// Finalize and return the validated config
-    pub fn build(self: Builder) void {
-        std.debug.print("Root is {s}", .{self.root});
-        var it = self.routes.iterator();
-        while (it.next()) |value| {
-            std.debug.print("routes: key:=> {s} and backends:=> {any} and strategy :=> {d}\n", .{ value.key_ptr.*, value.value_ptr.*.backends, value.value_ptr.strategy });
-        }
-    }
 };
