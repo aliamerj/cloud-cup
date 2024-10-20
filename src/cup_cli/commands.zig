@@ -40,7 +40,7 @@ pub fn processCLICommand(
 
             const config = config_manager.getCurrentConfig();
 
-            var routes = config.routes.iterator();
+            var routes = config.conf.routes.iterator();
             while (routes.next()) |kv| {
                 const backends = kv.value_ptr.backends;
                 for (backends) |b| {
@@ -65,15 +65,23 @@ pub fn processCLICommand(
             const config_path = std.mem.trim(u8, file_path.?, "\n");
 
             const config = config_manager.getCurrentConfig();
-            var new_config = try Config.init(config_path, config.allocator);
 
-            const err = try new_config.applyConfig();
+            const config_file = Config.readConfigFile(config_path, allocator) catch |err| {
+                var buf: [1024]u8 = undefined;
+                const err_message = try std.fmt.bufPrint(&buf, "Failed to load configuration file '{s}': {any}", .{ config_path, @errorName(err) });
+                _ = try client_conn.stream.writer().writeAll(err_message);
+                return;
+            };
+
+            var conf = Config.init(config_file, config.allocator);
+
+            const err = try conf.applyConfig();
             if (err != null) {
                 _ = try client_conn.stream.writer().writeAll(err.?.err_message);
                 return;
             }
 
-            try config_manager.pushNewConfig(new_config);
+            try config_manager.pushNewConfig(conf);
             _ = try client_conn.stream.writer().writeAll("new config applied sucessfuly\n");
         },
         .Unknown => {

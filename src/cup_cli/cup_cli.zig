@@ -1,6 +1,7 @@
 const std = @import("std");
 const Config_Manager = @import("../config/config_managment.zig").Config_Manager;
 const cmd = @import("commands.zig");
+const setNonblock = @import("../utils/utils.zig").setNonblock;
 
 pub fn setupCliSocket(
     config: *Config_Manager,
@@ -29,15 +30,24 @@ pub fn setupCliSocket(
     };
     defer uds_listener.deinit();
 
+    setNonblock(uds_listener.stream.handle) catch |err| {
+        return std.debug.print("CLI Error: {any}\n", .{err});
+    };
+
     while (true) {
-        // Accept a new connection from the client (CLI in this case)
         const client_conn = uds_listener.accept() catch |err| {
+            if (err == error.WouldBlock) {
+                // No client connection, sleep to avoid busy-waiting
+                std.time.sleep(100 * std.time.ns_per_ms); // Sleep for 100 ms
+                continue;
+            }
             return std.debug.print("CLI Error: {any}\n", .{err});
         };
+
         defer client_conn.stream.close();
 
         // Read command from CLI
-        var buffer: [256]u8 = undefined;
+        var buffer: [1024]u8 = undefined;
         const bytes_read = client_conn.stream.reader().read(&buffer) catch |err| {
             return std.debug.print("CLI Error: {any}\n", .{err});
         };

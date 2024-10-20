@@ -34,7 +34,7 @@ pub const Config_Manager = struct {
 
                 if (result != null) {
                     // Todo: free the old config
-                    // current_head.data.deinitBuilder();
+                    // current_head.data.deinit();
                     self.allocator.destroy(current_head);
                     break;
                 }

@@ -3,9 +3,9 @@ const Epoll = @import("../http/epoll_handler.zig").Epoll;
 const utils = @import("../utils/utils.zig");
 const poxis = std.posix;
 
-pub fn acceptIncomingConnections(tcp_server: *std.net.Server, epoll: Epoll) !void {
+pub fn acceptIncomingConnections(tcp_server: std.net.Server, epoll: Epoll) !void {
     while (true) {
-        const conn = tcp_server.accept() catch |err| {
+        const conn = @constCast(&tcp_server).accept() catch |err| {
             if (err == error.WouldBlock) break; // No more connections to accept
             return err;
         };

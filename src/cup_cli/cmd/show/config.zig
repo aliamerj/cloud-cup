@@ -11,14 +11,14 @@ pub fn convertToJSONConfig(config: Config, allocator: std.mem.Allocator) !std.Ar
 
     // Write the "root" field
     try x.objectField("root");
-    _ = try x.write(config.root); // Use x.write instead of writer.write
+    _ = try x.write(config.conf.root); // Use x.write instead of writer.write
 
     // Write the "routes" field
     try x.objectField("routes");
     try x.beginObject();
 
     // Iterate over the routes hash map and write each route
-    var it = config.routes.iterator();
+    var it = config.conf.routes.iterator();
     while (it.next()) |kv| {
         const route_key = kv.key_ptr.*;
         const route_value = kv.value_ptr.*;

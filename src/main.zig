@@ -7,15 +7,19 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
-    defer arena.deinit();
-
-    var conf = Config.init("config/main_config.json", arena.allocator()) catch |err| {
+    const parsed_config = Config.readConfigFile("config/main_config.json", allocator) catch |err| {
         std.log.err("Failed to load configuration file 'config/main_config.json': {any}", .{err});
         return;
     };
-    defer conf.deinitBuilder();
 
-    var server = Server.init(&conf, allocator);
-    try server.run();
+    var conf = Config.init(parsed_config, allocator);
+    defer conf.deinit();
+
+    const err = try conf.applyConfig();
+    if (err != null) {
+        std.log.err("{s}\n", .{err.?.err_message});
+        return;
+    }
+
+    try Server.run(conf);
 }

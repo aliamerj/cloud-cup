@@ -7,40 +7,44 @@ const Error = @import("../utils/error_channel.zig").Error;
 
 const Allocator = std.mem.Allocator;
 
-pub const Config = struct {
+const Conf = struct {
     root: []const u8,
     routes: std.StringHashMap(Route),
-    allocator: Allocator,
     strategy_hash: std.StringHashMap(Strategy) = undefined,
+};
 
-    pub fn init(json_file_path: []const u8, allocator: Allocator) !Config {
-
+pub const Config = struct {
+    config_parsed: std.json.Parsed(std.json.Value),
+    allocator: Allocator,
+    conf: Conf = undefined,
+    //
+    pub fn readConfigFile(config_path: []const u8, allocator: Allocator) !std.json.Parsed(std.json.Value) {
         // Read the JSON file contents
-        const data = try std.fs.cwd().readFileAlloc(allocator, json_file_path, 8024);
+        const data = try std.fs.cwd().readFileAlloc(allocator, config_path, 8024);
         defer allocator.free(data);
 
         // Parse the JSON data
-        const parse = try std.json.parseFromSlice(std.json.Value, allocator, data, .{ .allocate = .alloc_always });
-        defer parse.deinit();
+        return try std.json.parseFromSlice(std.json.Value, allocator, data, .{ .allocate = .alloc_always });
+    }
 
-        // Get the fields
-        const root_value = parse.value.object.get("root") orelse return error.MissingRootField;
-        const routes_value = parse.value.object.get("routes") orelse return error.MissingRoutesField;
-
-        const build = try Builder.init(allocator, root_value, routes_value);
-
+    pub fn init(parsed: std.json.Parsed(std.json.Value), allocator: Allocator) Config {
         return Config{
-            .root = build.root,
-            .routes = build.routes,
+            .config_parsed = parsed,
             .allocator = allocator,
         };
     }
 
     pub fn applyConfig(self: *Config) !?Error {
         errdefer self.deinitStrategies();
-        self.strategy_hash = std.StringHashMap(Strategy).init(self.allocator);
+        const build = try Builder.init(self.allocator, self.config_parsed);
 
-        var it = self.routes.iterator();
+        self.conf = Conf{
+            .root = build.root,
+            .routes = build.routes,
+            .strategy_hash = std.StringHashMap(Strategy).init(self.allocator),
+        };
+
+        var it = self.conf.routes.iterator();
         while (it.next()) |e| {
             const strategy = e.value_ptr.routeSetup() catch |err| {
                 if (err == error.UnsupportedStrategy) {
@@ -56,26 +60,32 @@ pub const Config = struct {
                 return err;
             };
             const strategy_init = try strategy.init(e.value_ptr.backends, self.allocator);
-            try self.strategy_hash.put(e.key_ptr.*, strategy_init);
+            try self.conf.strategy_hash.put(e.key_ptr.*, strategy_init);
         }
 
         return null;
     }
 
+    pub fn deinit(self: *Config) void {
+        self.deinitBuilder();
+        self.config_parsed.deinit();
+    }
+
     pub fn deinitStrategies(self: *Config) void {
-        var it = self.strategy_hash.iterator();
+        var it = self.conf.strategy_hash.iterator();
+
         while (it.next()) |e| {
             e.value_ptr.round_robin.backends.deinit();
         }
-        self.strategy_hash.deinit();
+        self.conf.strategy_hash.deinit();
     }
 
     pub fn deinitBuilder(self: *Config) void {
         self.deinitStrategies();
-        var it = self.routes.iterator();
+        var it = self.conf.routes.iterator();
         while (it.next()) |entry| {
             self.allocator.free(entry.value_ptr.backends);
         }
-        self.routes.deinit();
+        self.conf.routes.deinit();
     }
 };

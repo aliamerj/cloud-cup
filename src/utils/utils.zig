@@ -43,3 +43,10 @@ pub fn extractPath(request: []const u8) !ExtractedPath {
         .path = path,
     };
 }
+
+pub fn setNonblock(fd: std.posix.fd_t) !void {
+    var flags = try std.posix.fcntl(fd, std.posix.F.GETFL, 0);
+    var flags_s: *std.posix.O = @ptrCast(&flags);
+    flags_s.NONBLOCK = true;
+    _ = try std.posix.fcntl(fd, std.posix.F.SETFL, flags);
+}

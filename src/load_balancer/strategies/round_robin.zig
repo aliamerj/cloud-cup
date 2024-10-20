@@ -47,7 +47,7 @@ pub const RoundRobin = struct {
         path: []const u8,
     ) !void {
         var servers_down: usize = 0;
-        var strategy_hash = config.strategy_hash;
+        var strategy_hash = config.conf.strategy_hash;
 
         try self.handleClientRequest(
             &servers_down,

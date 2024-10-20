@@ -10,48 +10,42 @@ const Pool = std.Thread.Pool;
 const WaitGroup = std.Thread.WaitGroup;
 
 pub const Server = struct {
-    config: *Config,
-    allocator: std.mem.Allocator,
-
-    pub fn init(config: *Config, allocator: std.mem.Allocator) Server {
-        return Server{
-            .config = config,
-            .allocator = allocator,
-        };
-    }
-
-    pub fn run(self: Server) !void {
-        _ = try self.config.applyConfig();
-
-        var server_addy = try utils.parseServerAddress(self.config.root);
+    pub fn run(config: Config) !void {
+        var server_addy = try utils.parseServerAddress(config.conf.root);
 
         var tcp_server = try server_addy.listen(.{
             .reuse_port = true,
             .reuse_address = true,
         });
         defer tcp_server.deinit();
-        std.log.info("Server listening on {s}\n", .{self.config.root});
+        std.log.info("Server listening on {s}\n", .{config.conf.root});
 
-        try self.startServer(tcp_server);
+        var config_manger = Config_Mangment.init(config.allocator);
+        try config_manger.pushNewConfig(config);
+
+        try startServer(tcp_server, &config_manger);
     }
 
     // strat the server with epoll
-    fn startServer(self: Server, tcp_server: std.net.Server) !void {
+    fn startServer(tcp_server: std.net.Server, config_manger: *Config_Mangment) !void {
+        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+        defer _ = gpa.deinit();
+        const allocator = gpa.allocator();
+
         const epoll = try Epoll.init(tcp_server);
         defer epoll.deinit();
 
-        var config_manger = Config_Mangment.init(self.allocator);
-        try config_manger.pushNewConfig(self.config.*);
-
         var thread_safe_arena: std.heap.ThreadSafeAllocator = .{
-            .child_allocator = self.allocator,
+            .child_allocator = allocator,
         };
         const arena = thread_safe_arena.allocator();
 
         var thread_pool: Pool = undefined;
+
         try thread_pool.init(Pool.Options{
             .allocator = arena,
         });
+
         defer thread_pool.deinit();
 
         var wait_group: WaitGroup = undefined;
@@ -60,7 +54,7 @@ pub const Server = struct {
         var events: [1024]std.os.linux.epoll_event = undefined;
 
         try thread_pool.spawn(cli.setupCliSocket, .{
-            &config_manger,
+            config_manger,
             &arena,
         });
 
@@ -68,7 +62,7 @@ pub const Server = struct {
             const nfds = epoll.wait(&events);
             for (events[0..nfds]) |event| {
                 if (event.data.fd == tcp_server.stream.handle) {
-                    try ops.acceptIncomingConnections(@constCast(&tcp_server), epoll);
+                    try ops.acceptIncomingConnections(tcp_server, epoll);
                 } else {
                     const client_fd = event.data.fd;
 
@@ -77,7 +71,7 @@ pub const Server = struct {
                         &arena,
                         epoll.epoll_fd,
                         client_fd,
-                        &config_manger,
+                        config_manger,
                     });
                 }
             }
@@ -113,7 +107,7 @@ pub const Server = struct {
             return;
         };
 
-        var selected_strategy = config.strategy_hash.get(path_info.path);
+        var selected_strategy = config.conf.strategy_hash.get(path_info.path);
 
         if (selected_strategy) |_| {
             selected_strategy.?.handle(client_fd, request, response, config, path_info.path) catch {};
@@ -128,13 +122,13 @@ pub const Server = struct {
                     return;
                 };
                 defer allocator.free(route);
-                var strategy = config.strategy_hash.get(route) orelse continue;
+                var strategy = config.conf.strategy_hash.get(route) orelse continue;
                 strategy.handle(client_fd, request, response, config, route) catch {};
                 ops.closeConnection(epoll_fd, client_fd) catch {};
                 return;
             }
         }
-        var general_strategy = config.strategy_hash.get("*") orelse unreachable;
+        var general_strategy = config.conf.strategy_hash.get("*") orelse unreachable;
 
         general_strategy.handle(client_fd, request, response, config, "*") catch {};
         ops.closeConnection(epoll_fd, client_fd) catch {};

@@ -10,7 +10,12 @@ pub const Builder = struct {
     root: []const u8 = undefined,
     routes: std.StringHashMap(Route) = undefined,
 
-    pub fn init(allocator: std.mem.Allocator, root: std.json.Value, routes: std.json.Value) !Builder {
+    pub fn init(allocator: std.mem.Allocator, parsed: std.json.Parsed(std.json.Value)) !Builder {
+
+        // Get the fields
+        const root = parsed.value.object.get("root") orelse return error.MissingRootField;
+        const routes = parsed.value.object.get("routes") orelse return error.MissingRoutesField;
+
         var hash_map = std.StringHashMap(Route).init(allocator);
 
         const root_value = try validateRoot(root);
