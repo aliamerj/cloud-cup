@@ -22,9 +22,17 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
+    // Add include path for BoringSSL headers
+    exe.addIncludePath(b.path("libs/boringssl/include"));
+
+    // Add the BoringSSL libraries
+    exe.addCSourceFile(.{ .file = b.path("libs/boringssl/build/ssl/libssl.a") });
+    exe.addCSourceFile(.{ .file = b.path("libs/boringssl/build/crypto/libcrypto.a") });
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).
+    exe.linkLibC();
+    exe.linkLibCpp();
     b.installArtifact(exe);
 
     // This *creates* a Run step in the build graph, to be executed when another

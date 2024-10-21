@@ -92,12 +92,10 @@ pub const Server = struct {
 
         var config = config_manager.getCurrentConfig();
 
-        const request_buffer = allocator.alloc(u8, 4094) catch unreachable;
-        const response = allocator.alloc(u8, 4094) catch unreachable;
-        defer allocator.free(request_buffer);
-        defer allocator.free(response);
+        var request_buffer: [4094]u8 = undefined;
+        var response_buffer: [4094]u8 = undefined;
 
-        const request = ops.readClientRequest(client_fd, request_buffer) catch {
+        const request = ops.readClientRequest(client_fd, &request_buffer) catch {
             ops.sendBadGateway(client_fd) catch {};
             return;
         };
@@ -110,7 +108,7 @@ pub const Server = struct {
         var selected_strategy = config.conf.strategy_hash.get(path_info.path);
 
         if (selected_strategy) |_| {
-            selected_strategy.?.handle(client_fd, request, response, config, path_info.path) catch {};
+            selected_strategy.?.handle(client_fd, request, &response_buffer, config, path_info.path) catch {};
             ops.closeConnection(epoll_fd, client_fd) catch {};
             return;
         }
@@ -123,14 +121,14 @@ pub const Server = struct {
                 };
                 defer allocator.free(route);
                 var strategy = config.conf.strategy_hash.get(route) orelse continue;
-                strategy.handle(client_fd, request, response, config, route) catch {};
+                strategy.handle(client_fd, request, &response_buffer, config, route) catch {};
                 ops.closeConnection(epoll_fd, client_fd) catch {};
                 return;
             }
         }
         var general_strategy = config.conf.strategy_hash.get("*") orelse unreachable;
 
-        general_strategy.handle(client_fd, request, response, config, "*") catch {};
+        general_strategy.handle(client_fd, request, &response_buffer, config, "*") catch {};
         ops.closeConnection(epoll_fd, client_fd) catch {};
     }
 };
