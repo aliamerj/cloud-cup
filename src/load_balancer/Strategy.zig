@@ -2,6 +2,7 @@ const std = @import("std");
 const Backend = @import("route.zig").Backend;
 const Round_robin = @import("strategies/round_robin.zig").RoundRobin;
 const Config = @import("../config/config.zig").Config;
+const ConnectionData = @import("../http/connection.zig").ConnectionData;
 
 pub const Strategy = union(enum) {
     round_robin: Round_robin,
@@ -14,7 +15,7 @@ pub const Strategy = union(enum) {
 
     pub fn handle(
         self: *Strategy,
-        client_fd: std.posix.fd_t,
+        conn: ConnectionData,
         request: []u8,
         response: []u8,
         config: Config,
@@ -23,7 +24,7 @@ pub const Strategy = union(enum) {
         switch (self.*) {
             inline else => |strategy| {
                 var stra = @constCast(&strategy);
-                try stra.handle(client_fd, request, response, config, path);
+                try stra.handle(conn, request, response, config, path);
             },
         }
     }

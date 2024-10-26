@@ -1,11 +1,12 @@
 const std = @import("std");
+const ops = @import("../../http/server_operations.zig");
+const utils = @import("../../utils/utils.zig");
 
 const Backend = @import("../route.zig").Backend;
 const Strategy = @import("../Strategy.zig").Strategy;
 const Epoll = @import("../../http/epoll_handler.zig").Epoll;
-const ops = @import("../../http/server_operations.zig");
-const utils = @import("../../utils/utils.zig");
 const Config = @import("../../config/config.zig").Config;
+const ConnectionData = @import("../../http/connection.zig").ConnectionData;
 
 const ServerData = struct {
     server: Backend,
@@ -40,7 +41,7 @@ pub const RoundRobin = struct {
 
     pub fn handle(
         self: *RoundRobin,
-        client_fd: std.posix.fd_t,
+        conn: ConnectionData,
         request: []u8,
         response: []u8,
         config: Config,
@@ -51,7 +52,7 @@ pub const RoundRobin = struct {
 
         try self.handleClientRequest(
             &servers_down,
-            client_fd,
+            conn,
             request,
             response,
             &strategy_hash,
@@ -62,7 +63,7 @@ pub const RoundRobin = struct {
     fn handleClientRequest(
         self: *RoundRobin,
         servers_down: *usize,
-        client_fd: std.posix.fd_t,
+        conn: ConnectionData,
         request: []u8,
         response: []u8,
         strategy_hash: *std.StringHashMap(Strategy),
@@ -98,7 +99,7 @@ pub const RoundRobin = struct {
                 };
 
                 // Forward response back to client
-                ops.forwardResponseToClient(backend_fd, client_fd, response) catch {
+                ops.forwardResponseToClient(backend_fd, conn, response) catch {
                     std.posix.close(backend_fd);
                     current_server.attempts += 1;
                     try self.backends.put(self.backend_key, current_server);
@@ -118,12 +119,12 @@ pub const RoundRobin = struct {
             }
 
             // No more valid servers
-            try ops.sendBadGateway(client_fd);
+            try ops.sendBadGateway(conn);
             return;
         }
 
         // No backends available, return a 502 error
-        try ops.sendBadGateway(client_fd);
+        try ops.sendBadGateway(conn);
     }
     fn findNextServer(
         self: *RoundRobin,

@@ -47,7 +47,7 @@ pub const Diagnostic = struct {
             };
         };
         var response_buffer: [1024]u8 = undefined;
-        const res = ops.readClientRequest(backend_fd, &response_buffer) catch |err| {
+        const res = ops.readClientRequest(.{ .ssl = null, .fd = backend_fd }, &response_buffer) catch |err| {
             const error_message = "Failed to read backend response";
 
             return Diagnostic{

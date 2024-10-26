@@ -2,3 +2,4 @@
 /zig-cache/
 .zig-cache/
 vgcore.*
+/ssl_key/*

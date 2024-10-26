@@ -22,10 +22,7 @@ pub fn setupCliSocket(
     };
 
     // Listen on the Unix socket
-    var uds_listener = addr.listen(.{
-        .reuse_port = true,
-        .reuse_address = true,
-    }) catch |err| {
+    var uds_listener = addr.listen(.{}) catch |err| {
         return std.debug.print("CLI Error: {any}\n", .{err});
     };
     defer uds_listener.deinit();

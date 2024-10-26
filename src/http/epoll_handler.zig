@@ -1,4 +1,15 @@
 const std = @import("std");
+const bssl = @cImport({
+    @cInclude("openssl/ssl.h");
+    @cInclude("openssl/err.h");
+    @cInclude("openssl/bio.h");
+    @cInclude("openssl/x509.h");
+    @cInclude("openssl/rand.h");
+    @cInclude("openssl/evp.h");
+    @cInclude("openssl/pem.h");
+});
+
+const Connection = @import("connection.zig").ConnectionData;
 
 pub const Epoll = struct {
     epoll_fd: i32,
@@ -7,7 +18,12 @@ pub const Epoll = struct {
         const epoll_fd = try std.posix.epoll_create1(0);
         try setNonblock(tcp.stream.handle);
 
-        try registerEpoll(epoll_fd, tcp.stream.handle);
+        var client_event: std.os.linux.epoll_event = .{
+            .events = std.os.linux.EPOLL.IN | std.os.linux.EPOLL.ET,
+            .data = .{ .fd = tcp.stream.handle },
+        };
+
+        try std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_ADD, tcp.stream.handle, &client_event);
 
         return Epoll{
             .epoll_fd = epoll_fd,
@@ -22,9 +38,9 @@ pub const Epoll = struct {
         return std.posix.epoll_wait(self.epoll_fd, events, -1);
     }
 
-    pub fn new(self: *const Epoll, client_fd: std.posix.fd_t) !void {
+    pub fn new(self: *const Epoll, client_fd: std.posix.fd_t, conn: *Connection) !void {
         try setNonblock(client_fd);
-        try registerEpoll(self.epoll_fd, client_fd);
+        try registerEpoll(self.epoll_fd, client_fd, conn);
     }
 
     fn setNonblock(fd: std.posix.fd_t) !void {
@@ -34,12 +50,10 @@ pub const Epoll = struct {
         _ = try std.posix.fcntl(fd, std.posix.F.SETFL, flags);
     }
 
-    fn registerEpoll(epoll_fd: std.os.linux.fd_t, client_fd: i32) !void {
-        var client_event: std.os.linux.epoll_event = undefined;
-
-        client_event = std.os.linux.epoll_event{
+    fn registerEpoll(epoll_fd: std.os.linux.fd_t, client_fd: i32, conn: *Connection) !void {
+        var client_event: std.os.linux.epoll_event = .{
             .events = std.os.linux.EPOLL.IN | std.os.linux.EPOLL.ET,
-            .data = .{ .fd = client_fd },
+            .data = .{ .ptr = @intFromPtr(conn) },
         };
 
         try std.posix.epoll_ctl(epoll_fd, std.os.linux.EPOLL.CTL_ADD, client_fd, &client_event);

@@ -17,6 +17,11 @@ pub const Config_Manager = struct {
             .head = Atomic(?*Node).init(null),
         };
     }
+    pub fn deinit(self: *Config_Manager) void {
+        const head = self.head.load(.acquire) orelse unreachable;
+        head.data.deinitStrategies();
+        self.allocator.destroy(head);
+    }
 
     pub fn pushNewConfig(self: *Config_Manager, config: Config) !void {
         const node = try self.allocator.create(Node);

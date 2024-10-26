@@ -1,27 +1,37 @@
 const std = @import("std");
+const ops = @import("http/server_operations.zig");
+const utils = @import("utils/utils.zig");
+const cli = @import("cup_cli/cup_cli.zig");
+const c = @import("http/connection.zig");
+const ssl = @import("ssl/SSL.zig");
+
 const Config = @import("config/config.zig").Config;
 const Config_Mangment = @import("config/config_managment.zig").Config_Manager;
 const Strategy = @import("load_balancer/Strategy.zig").Strategy;
 const Epoll = @import("http/epoll_handler.zig").Epoll;
-const ops = @import("http/server_operations.zig");
-const utils = @import("utils/utils.zig");
-const cli = @import("cup_cli/cup_cli.zig");
+
 const Pool = std.Thread.Pool;
 const WaitGroup = std.Thread.WaitGroup;
+
+const Connection = c.Connection;
+const ConnectionData = c.ConnectionData;
 
 pub const Server = struct {
     pub fn run(config: Config) !void {
         var server_addy = try utils.parseServerAddress(config.conf.root);
 
-        var tcp_server = try server_addy.listen(.{
-            .reuse_port = true,
-            .reuse_address = true,
-        });
+        var tcp_server = server_addy.listen(.{}) catch |err| {
+            std.log.err("{any}\n", .{err});
+            @constCast(&config).deinitStrategies();
+            return;
+        };
+
         defer tcp_server.deinit();
         std.log.info("Server listening on {s}\n", .{config.conf.root});
 
         var config_manger = Config_Mangment.init(config.allocator);
         try config_manger.pushNewConfig(config);
+        defer config_manger.deinit();
 
         try startServer(tcp_server, &config_manger);
     }
@@ -51,27 +61,34 @@ pub const Server = struct {
         var wait_group: WaitGroup = undefined;
         wait_group.reset();
 
-        var events: [1024]std.os.linux.epoll_event = undefined;
-
         try thread_pool.spawn(cli.setupCliSocket, .{
             config_manger,
             &arena,
         });
 
+        const ssl_ctx = try ssl.initializeSSLContext();
+        defer ssl.deinit(ssl_ctx);
+
+        var connection = Connection.init(allocator);
+        defer connection.deinit();
+
+        var events: [1024]std.os.linux.epoll_event = undefined;
+
         while (true) {
             const nfds = epoll.wait(&events);
+
             for (events[0..nfds]) |event| {
                 if (event.data.fd == tcp_server.stream.handle) {
-                    try ops.acceptIncomingConnections(tcp_server, epoll);
+                    try ops.acceptIncomingConnections(tcp_server, epoll, ssl_ctx, connection);
                 } else {
-                    const client_fd = event.data.fd;
-
+                    const conn: ?*ConnectionData = @ptrFromInt(event.data.ptr);
                     try thread_pool.spawn(handleRequest, .{
                         &wait_group,
                         &arena,
                         epoll.epoll_fd,
-                        client_fd,
                         config_manger,
+                        conn.?.*,
+                        connection,
                     });
                 }
             }
@@ -84,8 +101,9 @@ pub const Server = struct {
         wait_group: *WaitGroup,
         allocator: *const std.mem.Allocator,
         epoll_fd: std.posix.fd_t,
-        client_fd: std.posix.fd_t,
         config_manager: *Config_Mangment,
+        conn: ConnectionData,
+        connection: Connection,
     ) void {
         wait_group.start();
         defer wait_group.finish();
@@ -95,21 +113,21 @@ pub const Server = struct {
         var request_buffer: [4094]u8 = undefined;
         var response_buffer: [4094]u8 = undefined;
 
-        const request = ops.readClientRequest(client_fd, &request_buffer) catch {
-            ops.sendBadGateway(client_fd) catch {};
+        const request = ops.readClientRequest(conn, &request_buffer) catch {
+            ops.sendBadGateway(conn) catch {};
             return;
         };
 
         const path_info = utils.extractPath(request) catch {
-            ops.sendBadGateway(client_fd) catch {};
+            ops.sendBadGateway(conn) catch {};
             return;
         };
 
         var selected_strategy = config.conf.strategy_hash.get(path_info.path);
 
         if (selected_strategy) |_| {
-            selected_strategy.?.handle(client_fd, request, &response_buffer, config, path_info.path) catch {};
-            ops.closeConnection(epoll_fd, client_fd) catch {};
+            selected_strategy.?.handle(conn, request, &response_buffer, config, path_info.path) catch {};
+            ops.closeConnection(epoll_fd, conn, connection) catch {};
             return;
         }
 
@@ -121,14 +139,14 @@ pub const Server = struct {
                 };
                 defer allocator.free(route);
                 var strategy = config.conf.strategy_hash.get(route) orelse continue;
-                strategy.handle(client_fd, request, &response_buffer, config, route) catch {};
-                ops.closeConnection(epoll_fd, client_fd) catch {};
+                strategy.handle(conn, request, &response_buffer, config, route) catch {};
+                ops.closeConnection(epoll_fd, conn, connection) catch {};
                 return;
             }
         }
         var general_strategy = config.conf.strategy_hash.get("*") orelse unreachable;
 
-        general_strategy.handle(client_fd, request, &response_buffer, config, "*") catch {};
-        ops.closeConnection(epoll_fd, client_fd) catch {};
+        general_strategy.handle(conn, request, &response_buffer, config, "*") catch {};
+        ops.closeConnection(epoll_fd, conn, connection) catch {};
     }
 };

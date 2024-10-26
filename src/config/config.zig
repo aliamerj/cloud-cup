@@ -81,7 +81,6 @@ pub const Config = struct {
     }
 
     pub fn deinitBuilder(self: *Config) void {
-        self.deinitStrategies();
         var it = self.conf.routes.iterator();
         while (it.next()) |entry| {
             self.allocator.free(entry.value_ptr.backends);
