@@ -18,11 +18,12 @@ const ConnectionData = c.ConnectionData;
 
 pub const Server = struct {
     pub fn run(config: Config) !void {
-        var server_addy = try utils.parseServerAddress(config.conf.root);
-
+        var server_addy = utils.parseServerAddress(config.conf.root) catch |err| {
+            std.log.err("{any}\n", .{err});
+            return;
+        };
         var tcp_server = server_addy.listen(.{}) catch |err| {
             std.log.err("{any}\n", .{err});
-            @constCast(&config).deinitStrategies();
             return;
         };
 
@@ -66,9 +67,6 @@ pub const Server = struct {
             &arena,
         });
 
-        const ssl_ctx = try ssl.initializeSSLContext();
-        defer ssl.deinit(ssl_ctx);
-
         var connection = Connection.init(allocator);
         defer connection.deinit();
 
@@ -76,17 +74,18 @@ pub const Server = struct {
 
         while (true) {
             const nfds = epoll.wait(&events);
+            const config = config_manger.getCurrentConfig();
 
             for (events[0..nfds]) |event| {
                 if (event.data.fd == tcp_server.stream.handle) {
-                    try ops.acceptIncomingConnections(tcp_server, epoll, ssl_ctx, connection);
+                    try ops.acceptIncomingConnections(tcp_server, epoll, config.conf.ssl, connection);
                 } else {
                     const conn: ?*ConnectionData = @ptrFromInt(event.data.ptr);
                     try thread_pool.spawn(handleRequest, .{
                         &wait_group,
                         &arena,
                         epoll.epoll_fd,
-                        config_manger,
+                        config,
                         conn.?.*,
                         connection,
                     });
@@ -101,25 +100,25 @@ pub const Server = struct {
         wait_group: *WaitGroup,
         allocator: *const std.mem.Allocator,
         epoll_fd: std.posix.fd_t,
-        config_manager: *Config_Mangment,
+        config: Config,
         conn: ConnectionData,
         connection: Connection,
     ) void {
         wait_group.start();
         defer wait_group.finish();
 
-        var config = config_manager.getCurrentConfig();
-
         var request_buffer: [4094]u8 = undefined;
         var response_buffer: [4094]u8 = undefined;
 
         const request = ops.readClientRequest(conn, &request_buffer) catch {
             ops.sendBadGateway(conn) catch {};
+            ops.closeConnection(epoll_fd, conn, connection) catch {};
             return;
         };
 
         const path_info = utils.extractPath(request) catch {
             ops.sendBadGateway(conn) catch {};
+            ops.closeConnection(epoll_fd, conn, connection) catch {};
             return;
         };
 

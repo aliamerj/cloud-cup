@@ -12,12 +12,13 @@ pub fn main() !void {
         std.log.err("Failed to load configuration file 'config/main_config.json': {any}", .{err});
         return;
     };
+    defer parsed_config.deinit();
 
     var conf = Config.init(parsed_config, allocator);
     defer conf.deinit();
 
     const err = conf.applyConfig() catch |e| {
-        std.log.err("config err :{any}", .{e});
+        std.log.err("{any}", .{e});
         return;
     };
 

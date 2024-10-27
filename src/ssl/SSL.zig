@@ -12,7 +12,7 @@ const c = @cImport({
 
 pub const SSL_CTX = c.SSL_CTX;
 
-pub fn initializeSSLContext() !?*c.SSL_CTX {
+pub fn initializeSSLContext(certFile: []const u8, keyFile: []const u8) !?*c.SSL_CTX {
     const err = c.SSL_library_init();
 
     if (err != 1) {
@@ -28,23 +28,26 @@ pub fn initializeSSLContext() !?*c.SSL_CTX {
         std.debug.print("Failed to create SSL context\n", .{});
         return error.FailedToCreateContext;
     }
-    // Load server certificate and private key
-    const certFile = "ssl_key/certificate.crt"; // Path to your server certificate
-    const keyFile = "ssl_key/private.key"; // Path to your private key
 
-    if (c.SSL_CTX_use_certificate_file(ctx, certFile, c.SSL_FILETYPE_PEM) <= 0) {
+    var certFile_path: [4096]u8 = undefined;
+    var keyFile_path: [4096]u8 = undefined;
+
+    _ = try std.fs.realpath(certFile, &certFile_path);
+    _ = try std.fs.realpath(keyFile, &keyFile_path);
+
+    if (c.SSL_CTX_use_certificate_file(ctx, &certFile_path, c.SSL_FILETYPE_PEM) <= 0) {
         std.debug.print("Failed to load server certificate\n", .{});
         deinit(ctx);
         return error.FailedToLoadCertificate;
     }
 
-    if (c.SSL_CTX_use_PrivateKey_file(ctx, keyFile, c.SSL_FILETYPE_PEM) <= 0) {
+    if (c.SSL_CTX_use_PrivateKey_file(ctx, &keyFile_path, c.SSL_FILETYPE_PEM) <= 0) {
         std.debug.print("Failed to load private key\n", .{});
         deinit(ctx);
         return error.FailedToLoadPrivateKey;
     }
 
-    if (c.SSL_CTX_load_verify_locations(ctx, certFile, null) <= 0) {
+    if (c.SSL_CTX_load_verify_locations(ctx, &certFile_path, null) <= 0) {
         std.debug.print("Failed to verify certification location \n", .{});
         deinit(ctx);
         return error.FailedToVerifyCertification;

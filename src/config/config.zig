@@ -1,4 +1,5 @@
 const std = @import("std");
+const ssl_struct = @import("../ssl/SSL.zig");
 const Strategy = @import("../load_balancer/Strategy.zig").Strategy;
 const Epoll = @import("../http/epoll_handler.zig").Epoll;
 const Route = @import("../load_balancer/route.zig").Route;
@@ -11,6 +12,7 @@ const Conf = struct {
     root: []const u8,
     routes: std.StringHashMap(Route),
     strategy_hash: std.StringHashMap(Strategy) = undefined,
+    ssl: ?*ssl_struct.SSL_CTX,
 };
 
 pub const Config = struct {
@@ -35,13 +37,14 @@ pub const Config = struct {
     }
 
     pub fn applyConfig(self: *Config) !?Error {
-        errdefer self.deinitStrategies();
+        const strategy_hash = std.StringHashMap(Strategy).init(self.allocator);
         const build = try Builder.init(self.allocator, self.config_parsed);
 
         self.conf = Conf{
             .root = build.root,
             .routes = build.routes,
-            .strategy_hash = std.StringHashMap(Strategy).init(self.allocator),
+            .strategy_hash = strategy_hash,
+            .ssl = build.ssl,
         };
 
         var it = self.conf.routes.iterator();
@@ -60,7 +63,7 @@ pub const Config = struct {
                 return err;
             };
             const strategy_init = try strategy.init(e.value_ptr.backends, self.allocator);
-            try self.conf.strategy_hash.put(e.key_ptr.*, strategy_init);
+            try self.conf.strategy_hash.put(e.key_ptr.*, strategy_init); // Add to hashmap
         }
 
         return null;
@@ -68,12 +71,11 @@ pub const Config = struct {
 
     pub fn deinit(self: *Config) void {
         self.deinitBuilder();
-        self.config_parsed.deinit();
+        self.deinitStrategies();
     }
 
     pub fn deinitStrategies(self: *Config) void {
         var it = self.conf.strategy_hash.iterator();
-
         while (it.next()) |e| {
             e.value_ptr.round_robin.backends.deinit();
         }
@@ -82,9 +84,15 @@ pub const Config = struct {
 
     pub fn deinitBuilder(self: *Config) void {
         var it = self.conf.routes.iterator();
+
         while (it.next()) |entry| {
             self.allocator.free(entry.value_ptr.backends);
         }
+
         self.conf.routes.deinit();
+
+        if (self.conf.ssl) |s| {
+            ssl_struct.deinit(@constCast(s));
+        }
     }
 };

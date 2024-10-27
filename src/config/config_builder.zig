@@ -1,4 +1,5 @@
 const std = @import("std");
+const ssl_struc = @import("../ssl/SSL.zig");
 const r = @import("../load_balancer/route.zig");
 
 const Route = r.Route;
@@ -9,23 +10,60 @@ pub const Builder = struct {
     allocator: std.mem.Allocator,
     root: []const u8 = undefined,
     routes: std.StringHashMap(Route) = undefined,
+    ssl: ?*ssl_struc.SSL_CTX,
 
     pub fn init(allocator: std.mem.Allocator, parsed: std.json.Parsed(std.json.Value)) !Builder {
+        var hash_map = std.StringHashMap(Route).init(allocator);
+        errdefer hash_map.deinit(); // Free `hash_map` if an error occurs
 
-        // Get the fields
         const root = parsed.value.object.get("root") orelse return error.MissingRootField;
         const routes = parsed.value.object.get("routes") orelse return error.MissingRoutesField;
-
-        var hash_map = std.StringHashMap(Route).init(allocator);
+        const ssl = parsed.value.object.get("ssl");
 
         const root_value = try validateRoot(root);
+
+        // SSL context initialization
+        const ssl_ctx = try validateSSL(ssl);
+
+        // If validateRoutes fails, `hash_map` will be deallocated by the errdefer above
         try validateRoutes(routes, &hash_map, allocator);
 
         return Builder{
             .allocator = allocator,
             .root = root_value,
             .routes = hash_map,
+            .ssl = ssl_ctx,
         };
+    }
+
+    fn validateSSL(ssl_value: ?std.json.Value) !?*ssl_struc.SSL_CTX {
+        if (ssl_value) |s_v| {
+            switch (s_v) {
+                .object => |ssl| {
+                    const cert = ssl.get("ssl_certificate") orelse return error.MissingCertificate;
+                    const key = ssl.get("ssl_certificate_key") orelse return error.MissingCertificatePrivateKey;
+                    const cert_path = try validateCertificate(cert);
+                    const cert_key_path = try validateCertificateKey(key);
+                    return try ssl_struc.initializeSSLContext(cert_path, cert_key_path);
+                },
+                else => return error.InvalidSSLConfig,
+            }
+        }
+        return null;
+    }
+
+    fn validateCertificate(cert_value: std.json.Value) ![]const u8 {
+        switch (cert_value) {
+            .string => |cert_str| return cert_str,
+            else => return error.InvalidCertificateType,
+        }
+    }
+
+    fn validateCertificateKey(cert_key_value: std.json.Value) ![]const u8 {
+        switch (cert_key_value) {
+            .string => |cert_key_str| return cert_key_str,
+            else => return error.InvalidCertificatePrivateKeyType,
+        }
     }
 
     fn validateRoot(root_value: std.json.Value) ![]const u8 {
@@ -106,6 +144,7 @@ pub const Builder = struct {
             else => return error.InvalidBackendMaxFailure,
         }
     }
+
     fn validateBackend(backend: std.json.Value) !Backend {
         switch (backend) {
             .object => |backend_obj| {

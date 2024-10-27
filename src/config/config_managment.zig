@@ -1,4 +1,5 @@
 const std = @import("std");
+const ssl_struct = @import("../ssl/SSL.zig");
 const Config = @import("config.zig").Config;
 
 const Atomic = std.atomic.Value;
@@ -20,6 +21,15 @@ pub const Config_Manager = struct {
     pub fn deinit(self: *Config_Manager) void {
         const head = self.head.load(.acquire) orelse unreachable;
         head.data.deinitStrategies();
+        var it = head.data.conf.routes.iterator();
+        while (it.next()) |entry| {
+            self.allocator.free(entry.value_ptr.backends);
+        }
+
+        if (head.data.conf.ssl) |s| {
+            ssl_struct.deinit(@constCast(s));
+        }
+
         self.allocator.destroy(head);
     }
 
