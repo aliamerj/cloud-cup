@@ -20,11 +20,7 @@ pub const Config_Manager = struct {
     }
     pub fn deinit(self: *Config_Manager) void {
         const head = self.head.load(.acquire) orelse unreachable;
-        head.data.deinitStrategies();
-        var it = head.data.conf.routes.iterator();
-        while (it.next()) |entry| {
-            self.allocator.free(entry.value_ptr.backends);
-        }
+        @constCast(&head.data).deinit();
 
         if (head.data.conf.ssl) |s| {
             ssl_struct.deinit(@constCast(s));

@@ -15,7 +15,6 @@ pub fn main() !void {
     defer parsed_config.deinit();
 
     var conf = Config.init(parsed_config, allocator);
-    defer conf.deinit();
 
     const err = conf.applyConfig() catch |e| {
         std.log.err("{any}", .{e});

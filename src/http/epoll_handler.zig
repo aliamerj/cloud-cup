@@ -1,14 +1,4 @@
 const std = @import("std");
-const bssl = @cImport({
-    @cInclude("openssl/ssl.h");
-    @cInclude("openssl/err.h");
-    @cInclude("openssl/bio.h");
-    @cInclude("openssl/x509.h");
-    @cInclude("openssl/rand.h");
-    @cInclude("openssl/evp.h");
-    @cInclude("openssl/pem.h");
-});
-
 const Connection = @import("connection.zig").ConnectionData;
 
 pub const Epoll = struct {
@@ -19,7 +9,7 @@ pub const Epoll = struct {
         try setNonblock(tcp.stream.handle);
 
         var client_event: std.os.linux.epoll_event = .{
-            .events = std.os.linux.EPOLL.IN | std.os.linux.EPOLL.ET,
+            .events = std.os.linux.EPOLL.IN | std.os.linux.EPOLL.OUT | std.os.linux.EPOLL.ET,
             .data = .{ .fd = tcp.stream.handle },
         };
 
@@ -52,7 +42,7 @@ pub const Epoll = struct {
 
     fn registerEpoll(epoll_fd: std.os.linux.fd_t, client_fd: i32, conn: *Connection) !void {
         var client_event: std.os.linux.epoll_event = .{
-            .events = std.os.linux.EPOLL.IN | std.os.linux.EPOLL.ET,
+            .events = std.os.linux.EPOLL.IN | std.os.linux.EPOLL.OUT | std.os.linux.EPOLL.ET,
             .data = .{ .ptr = @intFromPtr(conn) },
         };
 
