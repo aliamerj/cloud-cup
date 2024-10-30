@@ -11,6 +11,7 @@ const c = @cImport({
 });
 
 pub const SSL_CTX = c.SSL_CTX;
+pub const SSL = c.SSL;
 
 pub fn initializeSSLContext(certFile: []const u8, keyFile: []const u8) !?*c.SSL_CTX {
     const err = c.SSL_library_init();

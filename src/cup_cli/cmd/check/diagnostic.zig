@@ -1,5 +1,5 @@
 const std = @import("std");
-const ops = @import("../../../http/server_operations.zig");
+const ops = @import("../../../core/server_ops/server_ops.zig");
 
 pub const Diagnostic = struct {
     host: []const u8,

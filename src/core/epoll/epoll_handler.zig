@@ -1,5 +1,5 @@
 const std = @import("std");
-const Connection = @import("connection.zig").ConnectionData;
+const Connection = @import("../connection/connection.zig").ConnectionData;
 
 pub const Epoll = struct {
     epoll_fd: i32,

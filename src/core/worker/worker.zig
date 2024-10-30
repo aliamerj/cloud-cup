@@ -1,14 +1,14 @@
 const std = @import("std");
-const ops = @import("../../http/server_operations.zig");
+const ops = @import("../server_ops/server_ops.zig");
 const utils = @import("../../utils/utils.zig");
 const cli = @import("../../cup_cli/cup_cli.zig");
-const c = @import("../../http/connection.zig");
+const c = @import("../../core/connection/connection.zig");
 const ssl = @import("../../ssl/SSL.zig");
 
 const Config = @import("../../config/config.zig").Config;
 const Config_Mangment = @import("../../config/config_managment.zig").Config_Manager;
 const Strategy = @import("../../load_balancer/Strategy.zig").Strategy;
-const Epoll = @import("../../http/epoll_handler.zig").Epoll;
+const Epoll = @import("../epoll/epoll_handler.zig").Epoll;
 
 const Pool = std.Thread.Pool;
 const WaitGroup = std.Thread.WaitGroup;

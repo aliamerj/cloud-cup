@@ -1,17 +1,9 @@
 const std = @import("std");
-const bssl = @cImport({
-    @cInclude("openssl/ssl.h");
-    @cInclude("openssl/err.h");
-    @cInclude("openssl/bio.h");
-    @cInclude("openssl/x509.h");
-    @cInclude("openssl/rand.h");
-    @cInclude("openssl/evp.h");
-    @cInclude("openssl/pem.h");
-});
+const SSL = @import("../../ssl/SSL.zig").SSL;
 
 pub const ConnectionData = struct {
     fd: i32 = undefined,
-    ssl: ?*bssl.SSL = undefined,
+    ssl: ?*SSL = undefined,
 };
 
 const ConnectionPool = std.heap.MemoryPoolExtra(ConnectionData, .{ .growable = true });
