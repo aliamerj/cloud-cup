@@ -17,12 +17,20 @@ const Connection = c.Connection;
 const ConnectionData = c.ConnectionData;
 
 // strat the server with epoll
-pub fn startWorker(tcp_server: std.net.Server, config_manger: Config_Mangment) !void {
+pub fn startWorker(server_addy: std.net.Address, config_manger: Config_Mangment) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    defer @constCast(&config_manger).deinit();
+    var tcp_server = server_addy.listen(.{
+        .reuse_address = true,
+        .reuse_port = true,
+    }) catch |err| {
+        std.log.err("Failed to start listening on server: {any}\n", .{err});
+        return;
+    };
+
+    defer tcp_server.deinit();
 
     const epoll = try Epoll.init(tcp_server);
     defer epoll.deinit();
@@ -82,13 +90,11 @@ fn handleRequest(
 ) void {
     wait_group.start();
     defer wait_group.finish();
-
     var request_buffer: [4094]u8 = undefined;
     var response_buffer: [4094]u8 = undefined;
 
     const request = ops.readClientRequest(conn, &request_buffer) catch {
         ops.sendBadGateway(conn) catch {};
-        ops.closeConnection(epoll_fd, conn, connection) catch {};
         return;
     };
 

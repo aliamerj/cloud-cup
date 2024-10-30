@@ -9,7 +9,7 @@ pub const Epoll = struct {
         try setNonblock(tcp.stream.handle);
 
         var client_event: std.os.linux.epoll_event = .{
-            .events = std.os.linux.EPOLL.IN | std.os.linux.EPOLL.OUT | std.os.linux.EPOLL.ET,
+            .events = std.os.linux.EPOLL.IN,
             .data = .{ .fd = tcp.stream.handle },
         };
 
@@ -42,7 +42,7 @@ pub const Epoll = struct {
 
     fn registerEpoll(epoll_fd: std.os.linux.fd_t, client_fd: i32, conn: *Connection) !void {
         var client_event: std.os.linux.epoll_event = .{
-            .events = std.os.linux.EPOLL.IN | std.os.linux.EPOLL.OUT | std.os.linux.EPOLL.ET,
+            .events = std.os.linux.EPOLL.IN | std.os.linux.EPOLL.ET,
             .data = .{ .ptr = @intFromPtr(conn) },
         };
 

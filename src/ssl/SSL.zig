@@ -54,6 +54,16 @@ pub fn initializeSSLContext(certFile: []const u8, keyFile: []const u8) !?*c.SSL_
     }
     c.SSL_CTX_set_verify(ctx, c.SSL_VERIFY_PEER, null);
     c.SSL_CTX_set_verify_depth(ctx, 1);
+
+    // Enable session cache for session resumption
+    const session_cache_mode = c.SSL_SESS_CACHE_SERVER;
+    _ = c.SSL_CTX_set_session_cache_mode(ctx, session_cache_mode);
+    _ = c.SSL_CTX_set_timeout(ctx, 300); // Set session timeout (5 min)
+
+    // Enable session tickets for faster reconnections
+    _ = c.SSL_CTX_set_options(ctx, c.SSL_OP_NO_TICKET);
+    _ = c.SSL_CTX_set_session_id_context(ctx, @ptrCast(&session_cache_mode), session_cache_mode);
+
     return ctx;
 }
 
@@ -61,17 +71,15 @@ pub fn deinit(ssl_ctx: ?*c.SSL_CTX) void {
     c.SSL_CTX_free(ssl_ctx);
 }
 
-fn newSSLConnection(ssl_ctx: ?*c.SSL_CTX) !?*c.SSL {
-    const ssl = c.SSL_new(ssl_ctx);
-    if (ssl == null) {
+pub fn acceptSSLConnection(ssl_ctx: ?*SSL_CTX, client_fd: std.posix.fd_t) !?*c.SSL {
+    const ssl_client = c.SSL_new(ssl_ctx);
+    if (ssl_client == null) {
         return error.FailedToCreateSSLObject;
     }
-    return ssl;
-}
 
-pub fn acceptSSLConnection(ssl_ctx: ?*SSL_CTX, client_fd: std.posix.fd_t) !?*c.SSL {
-    const ssl_client = try newSSLConnection(ssl_ctx);
     _ = c.SSL_set_fd(ssl_client, client_fd);
+    // Enable non-blocking I/O
+    _ = c.SSL_set_mode(ssl_client, c.SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER | c.SSL_MODE_ENABLE_PARTIAL_WRITE);
 
     const err = c.SSL_accept(ssl_client);
 
@@ -83,34 +91,39 @@ pub fn acceptSSLConnection(ssl_ctx: ?*SSL_CTX, client_fd: std.posix.fd_t) !?*c.S
     return ssl_client;
 }
 
-pub fn readSSLRequest(ssl: ?*c.SSL, request_buffer: []u8) ![]u8 {
-    const len = c.SSL_read(ssl, request_buffer.ptr, @intCast(request_buffer.len));
-    if (len <= 0) {
-        std.debug.print("SSL read failed\n", .{});
-        return error.SSLWriteFailed;
-    }
-    return request_buffer[0..@intCast(len)];
-}
+// Read data with non-blocking handling and retries
+pub fn readSSLRequest(ssl: *c.SSL, buffer: []u8) ![]u8 {
+    while (true) {
+        const len = c.SSL_read(ssl, buffer.ptr, @intCast(buffer.len));
+        if (len > 0) return buffer[0..@intCast(len)];
 
-pub fn writeSSLResponse(ssl: ?*c.SSL, response_buffer: []const u8, response_len: usize) !void {
-    var total_written: usize = 0;
-    while (total_written < response_len) {
-        const written = c.SSL_write(ssl, response_buffer.ptr + total_written, @intCast(response_len - total_written));
-        if (written <= 0) {
-            const ssl_err = c.SSL_get_error(ssl, written);
-            if (ssl_err == c.SSL_ERROR_WANT_WRITE or ssl_err == c.SSL_ERROR_WANT_READ) {
-                continue; // Retry the write
-            } else {
-                std.debug.print("SSL write failed with error: {}\n", .{ssl_err});
-
-                return error.SSLWriteFailed;
-            }
+        const ssl_err = c.SSL_get_error(ssl, len);
+        switch (ssl_err) {
+            c.SSL_ERROR_WANT_READ, c.SSL_ERROR_WANT_WRITE => continue, // Retry on these errors
+            else => return error.SSLReadFailed,
         }
-        total_written += @intCast(written);
     }
 }
 
+// Write data with retries, handling non-blocking I/O
+pub fn writeSSLResponse(ssl: *c.SSL, data: []const u8, request_len: usize) !void {
+    var written: usize = 0;
+    while (written < request_len) {
+        const len = c.SSL_write(ssl, data.ptr + written, @intCast(request_len - written));
+        if (len > 0) {
+            written += @intCast(len);
+            continue;
+        }
+
+        const ssl_err = c.SSL_get_error(ssl, len);
+        switch (ssl_err) {
+            c.SSL_ERROR_WANT_WRITE, c.SSL_ERROR_WANT_READ => continue, // Retry on these errors
+            else => return error.SSLWriteFailed,
+        }
+    }
+}
 pub fn closeConnection(ssl: ?*c.SSL) void {
+    _ = c.SSL_shutdown(ssl);
     c.SSL_free(ssl);
 }
 
