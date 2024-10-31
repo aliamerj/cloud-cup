@@ -1,35 +1,34 @@
 const std = @import("std");
-const ops = @import("../../core/server_ops/server_ops.zig");
-const utils = @import("../../utils/utils.zig");
+const ops = @import("../../../core/server_ops/server_ops.zig");
+const utils = @import("../../../utils/utils.zig");
 
-const Backend = @import("../route.zig").Backend;
-const Strategy = @import("../Strategy.zig").Strategy;
-const Epoll = @import("../../core/epoll/epoll_handler.zig").Epoll;
-const Config = @import("../../config/config.zig").Config;
-const ConnectionData = @import("../../core/connection/connection.zig").ConnectionData;
+const Backend = @import("../../route.zig").Backend;
+const Strategy = @import("../../Strategy.zig").Strategy;
+const Epoll = @import("../../../core/epoll/epoll_handler.zig").Epoll;
+const Config = @import("../../../config/config.zig").Config;
+const ConnectionData = @import("../../../core/connection/connection.zig").ConnectionData;
+const Backend_Manager = @import("backend_manager.zig").Backend_Manager;
 
 const ServerData = struct {
     server: Backend,
     attempts: u32,
 };
 
-pub const Hash_map = std.AutoHashMap(usize, ServerData);
-
 pub const RoundRobin = struct {
-    backends: Hash_map = undefined,
-    backend_key: usize = 0,
+    backends: Backend_Manager = undefined,
+    backend_ptr: ?*Backend_Manager.Backend = null,
 
     pub fn init(self: RoundRobin, servers: []Backend, allocator: std.mem.Allocator) !Strategy {
         _ = self;
-        var backends = Hash_map.init(allocator);
+        var bm = Backend_Manager.init(allocator);
 
-        for (servers, 0..) |value, i| {
-            try backends.put(i, .{ .server = value, .attempts = 0 });
+        for (servers) |value| {
+            try bm.push(.{ .server = value, .attempts = 0 });
         }
 
         const rr = RoundRobin{
-            .backends = backends,
-            .backend_key = 0,
+            .backends = bm,
+            .backend_ptr = bm.head,
         };
 
         return Strategy{ .round_robin = rr };
@@ -70,51 +69,45 @@ pub const RoundRobin = struct {
         path: []const u8,
     ) !void {
         const backends = strategy_hash.get(path).?.round_robin.backends;
-        const servers_count = backends.count();
+        const servers_count = backends.len;
 
         while (servers_count > servers_down.*) {
-            if (backends.get(self.backend_key)) |server_to_run| {
-                var current_server = server_to_run;
-
-                if (current_server.attempts >= current_server.server.max_failure.?) {
+            if (self.backend_ptr) |current_server| {
+                if (current_server.data.attempts >= current_server.data.server.max_failure.?) {
                     servers_down.* += 1;
-                    self.findNextServer(servers_count, strategy_hash, path);
+                    self.findNextServer(strategy_hash, path);
                     continue;
                 }
 
-                const backend_fd = ops.connectToBackend(current_server.server.host) catch {
-                    current_server.attempts += 1;
-                    try self.backends.put(self.backend_key, current_server);
-                    self.findNextServer(servers_count, strategy_hash, path);
+                const backend_fd = ops.connectToBackend(current_server.data.server.host) catch {
+                    current_server.data.attempts += 1;
+                    self.findNextServer(strategy_hash, path);
                     continue;
                 };
 
                 // Forward request to backend
                 ops.forwardRequestToBackend(backend_fd, request) catch {
                     std.posix.close(backend_fd);
-                    current_server.attempts += 1;
-                    try self.backends.put(self.backend_key, current_server);
-                    self.findNextServer(servers_count, strategy_hash, path);
+                    current_server.data.attempts += 1;
+                    self.findNextServer(strategy_hash, path);
                     continue;
                 };
 
                 // Forward response back to client
                 ops.forwardResponseToClient(backend_fd, conn, response) catch {
                     std.posix.close(backend_fd);
-                    current_server.attempts += 1;
-                    try self.backends.put(self.backend_key, current_server);
-                    self.findNextServer(servers_count, strategy_hash, path);
+                    current_server.data.attempts += 1;
+                    self.findNextServer(strategy_hash, path);
                     continue;
                 };
 
                 // Reset attempts on successful connection
-                if (current_server.attempts > 0) {
-                    current_server.attempts = 0;
-                    try self.backends.put(self.backend_key, current_server);
+                if (current_server.data.attempts > 0) {
+                    current_server.data.attempts = 0;
                 }
 
                 // Successfully handled the request, find the next server
-                self.findNextServer(servers_count, strategy_hash, path);
+                self.findNextServer(strategy_hash, path);
                 return;
             }
 
@@ -128,12 +121,11 @@ pub const RoundRobin = struct {
     }
     fn findNextServer(
         self: *RoundRobin,
-        servers_number: usize,
         strategy_hash: *std.StringHashMap(Strategy),
         path: []const u8,
     ) void {
         // Move to the next server, wrapping around if necessary
-        self.backend_key = (self.backend_key + 1) % servers_number;
+        self.backend_ptr = self.backend_ptr.?.next orelse self.backends.head;
         strategy_hash.put(path, .{ .round_robin = self.* }) catch unreachable;
     }
 };

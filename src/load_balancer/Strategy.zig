@@ -1,6 +1,6 @@
 const std = @import("std");
 const Backend = @import("route.zig").Backend;
-const Round_robin = @import("strategies/round_robin.zig").RoundRobin;
+const Round_robin = @import("strategies/round_robin/round_robin.zig").RoundRobin;
 const Config = @import("../config/config.zig").Config;
 const ConnectionData = @import("../core/connection/connection.zig").ConnectionData;
 

@@ -67,7 +67,6 @@ pub fn startWorker(server_addy: std.net.Address, config_manger: Config_Mangment)
                 const conn: ?*ConnectionData = @ptrFromInt(event.data.ptr);
                 try thread_pool.spawn(handleRequest, .{
                     &wait_group,
-                    &arena,
                     epoll.epoll_fd,
                     config,
                     conn.?.*,
@@ -82,7 +81,6 @@ pub fn startWorker(server_addy: std.net.Address, config_manger: Config_Mangment)
 
 fn handleRequest(
     wait_group: *WaitGroup,
-    allocator: *const std.mem.Allocator,
     epoll_fd: std.posix.fd_t,
     config: Config,
     conn: ConnectionData,
@@ -114,11 +112,11 @@ fn handleRequest(
 
     if (path_info.sub) {
         var paths = std.mem.split(u8, path_info.path[1..], "/");
+        var buf_route: [1024]u8 = undefined;
         while (paths.next()) |path| {
-            const route = std.fmt.allocPrint(allocator.*, "/{s}/*", .{path}) catch {
+            const route = std.fmt.bufPrint(&buf_route, "/{s}/*", .{path}) catch {
                 return;
             };
-            defer allocator.free(route);
             var strategy = config.conf.strategy_hash.get(route) orelse continue;
             strategy.handle(conn, request, &response_buffer, config, route) catch {};
             ops.closeConnection(epoll_fd, conn, connection) catch {};
