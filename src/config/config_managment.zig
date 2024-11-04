@@ -44,8 +44,13 @@ pub const Config_Manager = struct {
                 );
 
                 if (result != null) {
-                    // Todo: free the old config
-                    // current_head.data.deinit();
+                    current_head.data.conf.strategy_hash.deinit();
+                    current_head.data.deinitBuilder();
+
+                    if (current_head.data.conf.ssl) |s| {
+                        ssl_struct.deinit(@constCast(s));
+                    }
+                    current_head.data.config_parsed.deinit();
                     self.allocator.destroy(current_head);
                     break;
                 }

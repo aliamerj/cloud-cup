@@ -13,6 +13,17 @@ pub fn convertToJSONConfig(config: Config, allocator: std.mem.Allocator) !std.Ar
     try x.objectField("root");
     _ = try x.write(config.conf.root); // Use x.write instead of writer.write
 
+    if (config.conf.ssl) |_| {
+        try x.objectField("ssl");
+        try x.beginObject();
+
+        try x.objectField("ssl_certificate");
+        _ = try x.write(config.conf.ssl_certificate);
+        try x.objectField("ssl_certificate_key");
+        _ = try x.write(config.conf.ssl_certificate_key);
+        try x.endObject();
+    }
+
     // Write the "routes" field
     try x.objectField("routes");
     try x.beginObject();

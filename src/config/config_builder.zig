@@ -11,6 +11,8 @@ pub const Builder = struct {
     root: []const u8 = undefined,
     routes: std.StringHashMap(Route) = undefined,
     ssl: ?*ssl_struc.SSL_CTX,
+    ssl_certificate: []const u8 = "",
+    ssl_certificate_key: []const u8 = "",
 
     pub fn init(allocator: std.mem.Allocator, parsed: std.json.Parsed(std.json.Value)) !Builder {
         var hash_map = std.StringHashMap(Route).init(allocator);
@@ -23,7 +25,7 @@ pub const Builder = struct {
         const root_value = try validateRoot(root);
 
         // SSL context initialization
-        const ssl_ctx = try validateSSL(ssl);
+        const valid_ssl = try validateSSL(ssl);
 
         // If validateRoutes fails, `hash_map` will be deallocated by the errdefer above
         try validateRoutes(routes, &hash_map, allocator);
@@ -32,11 +34,19 @@ pub const Builder = struct {
             .allocator = allocator,
             .root = root_value,
             .routes = hash_map,
-            .ssl = ssl_ctx,
+            .ssl = valid_ssl.ssl_ctx,
+            .ssl_certificate = valid_ssl.ssl_certificate,
+            .ssl_certificate_key = valid_ssl.ssl_certificate_key,
         };
     }
 
-    fn validateSSL(ssl_value: ?std.json.Value) !?*ssl_struc.SSL_CTX {
+    const Valid_SSL = struct {
+        ssl_ctx: ?*ssl_struc.SSL_CTX,
+        ssl_certificate: []const u8,
+        ssl_certificate_key: []const u8,
+    };
+
+    fn validateSSL(ssl_value: ?std.json.Value) !Valid_SSL {
         if (ssl_value) |s_v| {
             switch (s_v) {
                 .object => |ssl| {
@@ -44,12 +54,22 @@ pub const Builder = struct {
                     const key = ssl.get("ssl_certificate_key") orelse return error.MissingCertificatePrivateKey;
                     const cert_path = try validateCertificate(cert);
                     const cert_key_path = try validateCertificateKey(key);
-                    return try ssl_struc.initializeSSLContext(cert_path, cert_key_path);
+                    const ssl_ctx = try ssl_struc.initializeSSLContext(cert_path, cert_key_path);
+
+                    return Valid_SSL{
+                        .ssl_ctx = ssl_ctx,
+                        .ssl_certificate = cert_path,
+                        .ssl_certificate_key = cert_key_path,
+                    };
                 },
                 else => return error.InvalidSSLConfig,
             }
         }
-        return null;
+        return Valid_SSL{
+            .ssl_ctx = null,
+            .ssl_certificate = "",
+            .ssl_certificate_key = "",
+        };
     }
 
     fn validateCertificate(cert_value: std.json.Value) ![]const u8 {

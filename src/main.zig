@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const Config = @import("config/config.zig").Config;
+const Shared_Config = @import("core/shared_memory/SharedMemory.zig").SharedMemory([4096]u8);
 const Server = @import("server.zig").Server;
 
 pub fn main() !void {
@@ -8,23 +9,20 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    const parsed_config = Config.readConfigFile("config/main_config.json", allocator) catch |err| {
+    var file_buffer: [4096]u8 = undefined;
+    const file_data = std.fs.cwd().readFile("config/main_config.json", &file_buffer) catch |err| {
         std.log.err("Failed to load configuration file 'config/main_config.json': {any}", .{err});
         return;
     };
-    defer parsed_config.deinit();
 
-    var conf = Config.init(parsed_config, allocator);
+    var mutx = std.Thread.Mutex{};
+    var shared_config = try Shared_Config.init(file_buffer, &mutx);
+    defer shared_config.deinit();
 
-    const err = conf.applyConfig() catch |e| {
-        std.log.err("{any}", .{e});
-        return;
-    };
+    var config = try Config.init(file_data, allocator, null);
+    defer config.deinit();
 
-    if (err != null) {
-        std.log.err("{s}\n", .{err.?.err_message});
-        return;
-    }
+    try Config.share(shared_config, 1, file_data);
 
-    try Server.run(conf);
+    try Server.run(config, shared_config);
 }
