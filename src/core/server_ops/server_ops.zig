@@ -104,3 +104,30 @@ pub fn sendBadRequest(conn: ConnectionData) !void {
         try http_ops.writeHttp(conn.fd, response, response.len);
     }
 }
+
+pub fn sendSecurityError(conn: ConnectionData, err: []const u8) !void {
+    var response: []const u8 = "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: ";
+
+    if (std.mem.eql(u8, err, "SQLInjection")) {
+        response = "SQL Injection Detected: Request Blocked\r\n";
+    } else if (std.mem.eql(u8, err, "XSS")) {
+        response = "Cross-Site Scripting Detected: Request Blocked\r\n";
+    } else if (std.mem.eql(u8, err, "DirectoryTraversal")) {
+        response = "Directory Traversal Attempt Detected: Request Blocked\r\n";
+    } else if (std.mem.eql(u8, err, "MissingRequiredHeaders")) {
+        response = "Missing Required Headers: Request Blocked\r\n";
+    }
+
+    // Set the Content-Length header
+    const content_length = response.len;
+    var buf: [1024]u8 = undefined;
+    response = std.fmt.bufPrint(&buf, "{s}{d}\r\n\r\n{s}", .{ "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nContent-Length: ", content_length, response }) catch {
+        return error.OutOfMemory; // Handle memory allocation failure
+    };
+
+    if (conn.ssl) |s| {
+        try ssl_ops.writeSSL(s, response, response.len);
+    } else {
+        try http_ops.writeHttp(conn.fd, response, response.len);
+    }
+}

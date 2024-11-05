@@ -18,6 +18,7 @@ pub const Conf = struct {
     ssl: ?*ssl_struct.SSL_CTX,
     ssl_certificate: []const u8 = "",
     ssl_certificate_key: []const u8 = "",
+    security: bool,
 };
 
 pub const ValidationMessage = struct {
@@ -36,15 +37,18 @@ pub const Config = struct {
                 var buf_m: [1024]u8 = undefined;
                 const err_message = try std.fmt.bufPrint(&buf_m, "Invaild Config, '{s}'", .{@errorName(err)});
                 _ = try w.write(err_message);
+                return err;
             }
             return err;
         };
+        errdefer parsed.deinit();
 
         const response = applyConfig(parsed, allocator) catch |err| {
             if (writer) |w| {
                 var buf_m: [1024]u8 = undefined;
                 const err_message = try std.fmt.bufPrint(&buf_m, "Invaild json, '{s}'", .{@errorName(err)});
                 _ = try w.write(err_message);
+                return err;
             }
             return err;
         };
@@ -103,7 +107,8 @@ pub const Config = struct {
     }
 
     pub fn applyConfig(config_parsed: JsonParsedValue, allocator: Allocator) !ValidationMessage {
-        const strategy_hash = std.StringHashMap(Strategy).init(allocator);
+        var strategy_hash = std.StringHashMap(Strategy).init(allocator);
+        errdefer strategy_hash.deinit();
         const build = try Builder.init(allocator, config_parsed);
 
         var conf = Conf{
@@ -113,6 +118,7 @@ pub const Config = struct {
             .ssl = build.ssl,
             .ssl_certificate = build.ssl_certificate,
             .ssl_certificate_key = build.ssl_certificate_key,
+            .security = build.security,
         };
 
         var it = conf.routes.iterator();

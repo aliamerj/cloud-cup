@@ -10,6 +10,7 @@ const Strategy = @import("../../load_balancer/Strategy.zig").Strategy;
 const Epoll = @import("../epoll/epoll_handler.zig").Epoll;
 const Config_Manager = @import("../../config/config_managment.zig").Config_Manager;
 const Shared_Config = @import("../shared_memory/SharedMemory.zig").SharedMemory([4096]u8);
+const secure = @import("../../core/security/security.zig").secure;
 
 const Pool = std.Thread.Pool;
 const WaitGroup = std.Thread.WaitGroup;
@@ -153,6 +154,15 @@ fn handleRequest(
         handleError(conn, epoll_fd, connection);
         return;
     };
+
+    if (config.conf.security) {
+        secure(request) catch |er| {
+            ops.sendSecurityError(conn, @errorName(er)) catch {};
+            ops.closeConnection(epoll_fd, conn, connection) catch {};
+            std.debug.print("{any}\n", .{er});
+            return;
+        };
+    }
 
     const path_info = utils.extractPath(request) catch {
         handleError(conn, epoll_fd, connection);

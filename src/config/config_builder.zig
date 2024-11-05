@@ -13,6 +13,7 @@ pub const Builder = struct {
     ssl: ?*ssl_struc.SSL_CTX,
     ssl_certificate: []const u8 = "",
     ssl_certificate_key: []const u8 = "",
+    security: bool,
 
     pub fn init(allocator: std.mem.Allocator, parsed: std.json.Parsed(std.json.Value)) !Builder {
         var hash_map = std.StringHashMap(Route).init(allocator);
@@ -21,8 +22,11 @@ pub const Builder = struct {
         const root = parsed.value.object.get("root") orelse return error.MissingRootField;
         const routes = parsed.value.object.get("routes") orelse return error.MissingRoutesField;
         const ssl = parsed.value.object.get("ssl");
+        const security = parsed.value.object.get("security");
 
         const root_value = try validateRoot(root);
+
+        const security_value = try validateSecurity(security);
 
         // SSL context initialization
         const valid_ssl = try validateSSL(ssl);
@@ -37,6 +41,7 @@ pub const Builder = struct {
             .ssl = valid_ssl.ssl_ctx,
             .ssl_certificate = valid_ssl.ssl_certificate,
             .ssl_certificate_key = valid_ssl.ssl_certificate_key,
+            .security = security_value,
         };
     }
 
@@ -45,6 +50,16 @@ pub const Builder = struct {
         ssl_certificate: []const u8,
         ssl_certificate_key: []const u8,
     };
+
+    fn validateSecurity(security_value: ?std.json.Value) !bool {
+        if (security_value) |sec_value| {
+            switch (sec_value) {
+                .bool => |sec| return sec,
+                else => return error.InvalidSecurityType,
+            }
+        }
+        return false;
+    }
 
     fn validateSSL(ssl_value: ?std.json.Value) !Valid_SSL {
         if (ssl_value) |s_v| {

@@ -19,7 +19,10 @@ pub fn main() !void {
     var shared_config = try Shared_Config.init(file_buffer, &mutx);
     defer shared_config.deinit();
 
-    var config = try Config.init(file_data, allocator, null);
+    var config = Config.init(file_data, allocator, null) catch |err| {
+        std.log.err("Config error: {s}\n", .{@errorName(err)});
+        return;
+    };
     defer config.deinit();
 
     try Config.share(shared_config, 1, file_data);

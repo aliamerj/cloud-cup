@@ -107,7 +107,9 @@ fn applyNewConfig(
 
     var buffer: [4096]u8 = undefined;
     const file_data = try loadConfigFile(config_path, &buffer);
-    var config = try Config.init(buffer[0..file_data.len], allocator, client_conn.stream.writer());
+    var config = Config.init(buffer[0..file_data.len], allocator, client_conn.stream.writer()) catch {
+        return;
+    };
     defer {
         config.conf.strategy_hash.deinit();
         config.deinitBuilder();
