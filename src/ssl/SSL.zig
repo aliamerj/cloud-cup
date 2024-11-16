@@ -63,7 +63,7 @@ pub fn initializeSSLContext(certFile: []const u8, keyFile: []const u8) !?*c.SSL_
 
     // Enable session tickets for faster reconnections
     _ = c.SSL_CTX_set_options(ctx, c.SSL_OP_NO_TICKET);
-    _ = c.SSL_CTX_set_session_id_context(ctx, @ptrCast(&session_cache_mode), session_cache_mode);
+    _ = c.SSL_CTX_set_session_id_context(ctx, "MyUniqueSessionContext", session_cache_mode);
 
     return ctx;
 }
@@ -85,7 +85,6 @@ pub fn acceptSSLConnection(ssl_ctx: ?*SSL_CTX, client_fd: std.posix.fd_t) !?*c.S
     const err = c.SSL_accept(ssl_client);
 
     if (err <= 0) {
-        shutdown(ssl_client);
         closeConnection(ssl_client);
         return error.SSLHandshakeFailed;
     }
@@ -94,18 +93,10 @@ pub fn acceptSSLConnection(ssl_ctx: ?*SSL_CTX, client_fd: std.posix.fd_t) !?*c.S
 
 // Read data with non-blocking handling and retries
 pub fn readSSLRequest(ssl: *c.SSL, buffer: []u8) ![]u8 {
-    while (true) {
-        const len = c.SSL_read(ssl, buffer.ptr, @intCast(buffer.len));
-        if (len > 0) return buffer[0..@intCast(len)];
-
-        const ssl_err = c.SSL_get_error(ssl, len);
-        switch (ssl_err) {
-            c.SSL_ERROR_WANT_READ, c.SSL_ERROR_WANT_WRITE => continue, // Retry on these errors
-            else => return error.SSLReadFailed,
-        }
-    }
+    const len = c.SSL_read(ssl, buffer.ptr, @intCast(buffer.len));
+    if (len > 0) return buffer[0..@intCast(len)];
+    return error.SSLReadFailed;
 }
-
 // Write data with retries, handling non-blocking I/O
 pub fn writeSSLResponse(ssl: *c.SSL, data: []const u8, request_len: usize) !void {
     var written: usize = 0;
@@ -124,11 +115,11 @@ pub fn writeSSLResponse(ssl: *c.SSL, data: []const u8, request_len: usize) !void
     }
 }
 pub fn closeConnection(ssl: ?*c.SSL) void {
-    _ = c.SSL_shutdown(ssl);
+    shutdown(ssl);
     c.SSL_free(ssl);
 }
 
-pub fn shutdown(ssl: ?*c.SSL) void {
+fn shutdown(ssl: ?*c.SSL) void {
     _ = c.SSL_shutdown(ssl);
 }
 

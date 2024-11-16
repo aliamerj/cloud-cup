@@ -3,9 +3,9 @@ const std = @import("std");
 pub fn SharedMemory(comptime T: type) type {
     return struct {
         shared_memory: []align(4096) u8,
-        mutx: *std.Thread.Mutex,
+        mutx: ?*std.Thread.Mutex,
 
-        pub fn init(raw_data: T, mutx: *std.Thread.Mutex) !SharedMemory(T) {
+        pub fn init(raw_data: T, mutx: ?*std.Thread.Mutex) !SharedMemory(T) {
             const memory = try std.posix.mmap(
                 null,
                 4096,
@@ -15,7 +15,6 @@ pub fn SharedMemory(comptime T: type) type {
                 0,
             );
 
-            @memset(memory, 0x55);
             const data: *T = @ptrCast(memory);
             data.* = raw_data;
 
@@ -28,14 +27,19 @@ pub fn SharedMemory(comptime T: type) type {
             std.posix.munmap(self.shared_memory);
         }
 
+        pub fn getMemoryAddress(self: SharedMemory(T)) usize {
+            const mem_ptr: *T = @ptrCast(self.shared_memory);
+            return @intFromPtr(mem_ptr);
+        }
+
         pub fn readData(self: SharedMemory(T)) T {
             const data: *T = @ptrCast(self.shared_memory);
             return data.*;
         }
 
         pub fn writeStringData(self: SharedMemory(T), buf: []u8) void {
-            self.mutx.lock();
-            defer self.mutx.unlock();
+            self.mutx.?.lock();
+            defer self.mutx.?.unlock();
             @memset(self.shared_memory[0..], 0x00);
             std.mem.copyForwards(u8, self.shared_memory[0..], buf);
             if (buf.len < self.shared_memory.len) {

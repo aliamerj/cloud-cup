@@ -6,6 +6,7 @@ const Route = @import("../load_balancer/route.zig").Route;
 const Builder = @import("../config/config_builder.zig").Builder;
 
 const Shared_Config = @import("../core/shared_memory/SharedMemory.zig").SharedMemory([4096]u8);
+const RouteMemory = @import("../core/shared_memory/RouteMemory.zig");
 
 const Allocator = std.mem.Allocator;
 
@@ -30,8 +31,15 @@ pub const Config = struct {
     config_parsed: JsonParsedValue,
     allocator: Allocator,
     conf: Conf = undefined,
+    version: usize,
 
-    pub fn init(json_data: []u8, allocator: Allocator, writer: ?std.net.Stream.Writer) !Config {
+    pub fn init(
+        json_data: []u8,
+        allocator: Allocator,
+        writer: ?std.net.Stream.Writer,
+        version: usize,
+        create: bool,
+    ) !Config {
         const parsed = std.json.parseFromSlice(std.json.Value, allocator, json_data, .{}) catch |err| {
             if (writer) |w| {
                 var buf_m: [1024]u8 = undefined;
@@ -43,7 +51,7 @@ pub const Config = struct {
         };
         errdefer parsed.deinit();
 
-        const response = applyConfig(parsed, allocator) catch |err| {
+        const response = applyConfig(parsed, allocator, version, create) catch |err| {
             if (writer) |w| {
                 var buf_m: [1024]u8 = undefined;
                 const err_message = try std.fmt.bufPrint(&buf_m, "Invaild json, '{s}'", .{@errorName(err)});
@@ -68,6 +76,7 @@ pub const Config = struct {
             .config_parsed = parsed,
             .allocator = allocator,
             .conf = response.conf.?,
+            .version = version,
         };
     }
 
@@ -87,14 +96,13 @@ pub const Config = struct {
     pub fn deinitStrategies(self: *Config) void {
         var it = self.conf.strategy_hash.iterator();
         while (it.next()) |e| {
-            e.value_ptr.round_robin.backends.deinit();
+            e.value_ptr.deinit();
         }
         self.conf.strategy_hash.deinit();
     }
 
     pub fn deinitBuilder(self: *Config) void {
         var it = self.conf.routes.iterator();
-
         while (it.next()) |entry| {
             self.allocator.free(entry.value_ptr.backends);
         }
@@ -106,22 +114,24 @@ pub const Config = struct {
         }
     }
 
-    pub fn applyConfig(config_parsed: JsonParsedValue, allocator: Allocator) !ValidationMessage {
+    pub fn deinitMemory(self: Config) void {
+        var it = self.conf.routes.iterator();
+        while (it.next()) |entry| {
+            RouteMemory.deleteMemoryRoute(entry.key_ptr.*, self.version) catch {};
+        }
+    }
+
+    fn applyConfig(
+        config_parsed: JsonParsedValue,
+        allocator: Allocator,
+        version: usize,
+        create: bool,
+    ) !ValidationMessage {
         var strategy_hash = std.StringHashMap(Strategy).init(allocator);
         errdefer strategy_hash.deinit();
-        const build = try Builder.init(allocator, config_parsed);
+        const build = try Builder.init(allocator, config_parsed, version, create);
 
-        var conf = Conf{
-            .root = build.root,
-            .routes = build.routes,
-            .strategy_hash = strategy_hash,
-            .ssl = build.ssl,
-            .ssl_certificate = build.ssl_certificate,
-            .ssl_certificate_key = build.ssl_certificate_key,
-            .security = build.security,
-        };
-
-        var it = conf.routes.iterator();
+        var it = build.routes.iterator();
         while (it.next()) |e| {
             const strategy = e.value_ptr.routeSetup() catch |err| {
                 if (err == error.UnsupportedStrategy) {
@@ -136,12 +146,20 @@ pub const Config = struct {
                 }
                 return err;
             };
-            const strategy_init = try strategy.init(e.value_ptr.backends, allocator);
-            try conf.strategy_hash.put(e.key_ptr.*, strategy_init); // Add to hashmap
+            const strategy_init = try strategy.init(e.value_ptr.backends, allocator, e.key_ptr.*, version);
+            try strategy_hash.put(e.key_ptr.*, strategy_init);
         }
 
         return ValidationMessage{
-            .conf = conf,
+            .conf = .{
+                .root = build.root,
+                .routes = build.routes,
+                .strategy_hash = strategy_hash,
+                .ssl = build.ssl,
+                .ssl_certificate = build.ssl_certificate,
+                .ssl_certificate_key = build.ssl_certificate_key,
+                .security = build.security,
+            },
         };
     }
 };

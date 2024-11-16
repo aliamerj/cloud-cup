@@ -2,6 +2,7 @@ const std = @import("std");
 
 const Config = @import("config/config.zig").Config;
 const Shared_Config = @import("core/shared_memory/SharedMemory.zig").SharedMemory([4096]u8);
+const Config_Manager = @import("config/config_managment.zig").Config_Manager;
 const Server = @import("server.zig").Server;
 
 pub fn main() !void {
@@ -15,17 +16,25 @@ pub fn main() !void {
         return;
     };
 
-    var mutx = std.Thread.Mutex{};
-    var shared_config = try Shared_Config.init(file_buffer, &mutx);
+    var mutex = std.Thread.Mutex{};
+    var shared_config = try Shared_Config.init(file_buffer, &mutex);
     defer shared_config.deinit();
 
-    var config = Config.init(file_data, allocator, null) catch |err| {
+    var config = Config.init(file_data, allocator, null, 1, true) catch |err| {
         std.log.err("Config error: {s}\n", .{@errorName(err)});
         return;
     };
-    defer config.deinit();
+
+    defer {
+        config.deinitMemory();
+        config.deinit();
+    }
+
+    var config_manager = Config_Manager.init(allocator);
+    defer config_manager.deinit();
+    try config_manager.pushNewConfig(config);
 
     try Config.share(shared_config, 1, file_data);
 
-    try Server.run(config, shared_config);
+    try Server.run(&config_manager, shared_config);
 }

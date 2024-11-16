@@ -1,7 +1,8 @@
 const std = @import("std");
 const ssl_struc = @import("../ssl/SSL.zig");
 const r = @import("../load_balancer/route.zig");
-
+const SharedMemory = @import("../core/shared_memory/SharedMemory.zig").SharedMemory(usize);
+const RouteMemory = @import("../core/shared_memory/RouteMemory.zig");
 const Route = r.Route;
 const Backend = r.Backend;
 
@@ -15,7 +16,12 @@ pub const Builder = struct {
     ssl_certificate_key: []const u8 = "",
     security: bool,
 
-    pub fn init(allocator: std.mem.Allocator, parsed: std.json.Parsed(std.json.Value)) !Builder {
+    pub fn init(
+        allocator: std.mem.Allocator,
+        parsed: std.json.Parsed(std.json.Value),
+        version: usize,
+        create: bool,
+    ) !Builder {
         var hash_map = std.StringHashMap(Route).init(allocator);
         errdefer hash_map.deinit(); // Free `hash_map` if an error occurs
 
@@ -31,8 +37,17 @@ pub const Builder = struct {
         // SSL context initialization
         const valid_ssl = try validateSSL(ssl);
 
+        var all_backend = std.ArrayList([]Backend).init(allocator);
+        defer all_backend.deinit();
+
         // If validateRoutes fails, `hash_map` will be deallocated by the errdefer above
-        try validateRoutes(routes, &hash_map, allocator);
+        validateRoutes(routes, &hash_map, allocator, &all_backend, version, create) catch |e| {
+            for (all_backend.items) |b| {
+                allocator.free(b);
+            }
+            all_backend.deinit();
+            return e;
+        };
 
         return Builder{
             .allocator = allocator,
@@ -43,6 +58,21 @@ pub const Builder = struct {
             .ssl_certificate_key = valid_ssl.ssl_certificate_key,
             .security = security_value,
         };
+    }
+
+    pub fn deinit(self: *Builder) void {
+        var it = self.routes.iterator();
+
+        while (it.next()) |entry| {
+            self.allocator.free(entry.value_ptr.backends);
+            RouteMemory.deleteMemoryRoute(entry.key_ptr.*) catch {};
+        }
+
+        self.routes.deinit();
+
+        if (self.ssl) |s| {
+            ssl_struc.deinit(s);
+        }
     }
 
     const Valid_SSL = struct {
@@ -108,7 +138,14 @@ pub const Builder = struct {
         }
     }
 
-    fn validateRoutes(routes_value: std.json.Value, hash_map: *std.StringHashMap(Route), allocator: std.mem.Allocator) !void {
+    fn validateRoutes(
+        routes_value: std.json.Value,
+        hash_map: *std.StringHashMap(Route),
+        allocator: std.mem.Allocator,
+        all_backends: *std.ArrayList([]Backend),
+        version: usize,
+        create: bool,
+    ) !void {
         switch (routes_value) {
             .object => |routes_obj| {
                 var it = routes_obj.iterator();
@@ -116,7 +153,14 @@ pub const Builder = struct {
 
                 while (it.next()) |entry| {
                     if (hash_map.get(entry.key_ptr.*) != null) return error.DuplicateRoute;
-                    const route = try validateRoute(entry.value_ptr.*, allocator);
+                    const route = try validateRoute(
+                        entry.key_ptr.*,
+                        entry.value_ptr.*,
+                        allocator,
+                        all_backends,
+                        version,
+                        create,
+                    );
                     if (std.mem.eql(u8, entry.key_ptr.*, "*")) has_main_route = true;
                     if (entry.key_ptr.*.len > 1 and std.mem.endsWith(u8, entry.key_ptr.*, "/")) return error.InvalidRouteEndWith;
                     try hash_map.put(entry.key_ptr.*, route);
@@ -129,13 +173,25 @@ pub const Builder = struct {
             else => return error.InvalidRoutesField,
         }
     }
-    fn validateRoute(route_value: std.json.Value, allocator: std.mem.Allocator) !Route {
+    fn validateRoute(
+        route_key: []const u8,
+        route_value: std.json.Value,
+        allocator: std.mem.Allocator,
+        all_backends: *std.ArrayList([]Backend),
+        version: usize,
+        create: bool,
+    ) !Route {
         switch (route_value) {
             .object => |route_obj| {
                 const backends_value = route_obj.get("backends") orelse return error.MissingBackendsField;
                 const strategy_value = route_obj.get("strategy");
 
                 const backends = try validateBackends(backends_value, allocator);
+                try all_backends.append(backends);
+
+                if (create) {
+                    try RouteMemory.createRouteMemory(route_key, version);
+                }
 
                 if (strategy_value) |s_v| {
                     const strategy = try validateStrategy(s_v);

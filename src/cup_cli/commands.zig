@@ -66,8 +66,13 @@ fn respondWithDiagnostics(
 
     var buffer: [4096]u8 = undefined;
     std.mem.copyForwards(u8, &buffer, json);
-
-    var config = try Config.init(buffer[0..json.len], allocator, null);
+    var config = try Config.init(
+        buffer[0..json.len],
+        allocator,
+        null,
+        1,
+        false,
+    );
     defer {
         config.conf.strategy_hash.deinit();
         config.deinitBuilder();
@@ -107,7 +112,15 @@ fn applyNewConfig(
 
     var buffer: [4096]u8 = undefined;
     const file_data = try loadConfigFile(config_path, &buffer);
-    var config = Config.init(buffer[0..file_data.len], allocator, client_conn.stream.writer()) catch {
+    const config_version = try parseSharedConfigVersion(shm);
+
+    var config = Config.init(
+        buffer[0..file_data.len],
+        allocator,
+        client_conn.stream.writer(),
+        config_version + 1,
+        true,
+    ) catch {
         return;
     };
     defer {
@@ -116,7 +129,6 @@ fn applyNewConfig(
         config.config_parsed.deinit();
     }
 
-    const config_version = try parseSharedConfigVersion(shm);
     try Config.share(shm, config_version + 1, buffer[0..file_data.len]);
     try client_conn.stream.writer().writeAll("New config applied successfully\n");
 }

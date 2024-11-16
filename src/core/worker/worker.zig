@@ -19,13 +19,10 @@ const Connection = c.Connection;
 const ConnectionData = c.ConnectionData;
 
 // strat the server with epoll
-pub fn startWorker(server_addy: std.net.Address, shared_config: Shared_Config) !void {
+pub fn startWorker(server_addy: std.net.Address, config_manager: Config_Manager, shared_config: Shared_Config) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
-
-    var config_manager = Config_Manager.init(allocator);
-    defer config_manager.deinit();
 
     var tcp_server = server_addy.listen(.{
         .reuse_address = true,
@@ -57,10 +54,16 @@ pub fn startWorker(server_addy: std.net.Address, shared_config: Shared_Config) !
     var wait_group: WaitGroup = undefined;
     wait_group.reset();
 
-    // Spawn configuration watcher
-    thread_pool.spawnWg(&wait_group, configChangeWatcher, .{ allocator, &config_manager, shared_config });
+    var cm = config_manager;
 
-    try mainEventLoop(tcp_server, epoll, &wait_group, &thread_pool, &config_manager, connection);
+    // Spawn configuration watcher
+    thread_pool.spawnWg(&wait_group, configChangeWatcher, .{
+        allocator,
+        &cm,
+        shared_config,
+    });
+
+    try mainEventLoop(tcp_server, epoll, &wait_group, &thread_pool, &cm, connection);
 
     // Work on threads after scheduling all tasks
     thread_pool.waitAndWork(&wait_group);
@@ -81,7 +84,7 @@ fn mainEventLoop(
         var config = config_manager.getCurrentConfig();
         for (events[0..nfds]) |event| {
             if (event.data.fd == tcp_server.stream.handle) {
-                try ops.acceptIncomingConnections(tcp_server, epoll, &config.conf.ssl, connection);
+                try ops.acceptIncomingConnections(tcp_server, epoll, config.conf.ssl, connection);
             } else {
                 const conn: ?*ConnectionData = @ptrFromInt(event.data.ptr);
                 thread_pool.spawnWg(wait_group, handleRequest, .{
@@ -95,8 +98,12 @@ fn mainEventLoop(
     }
 }
 
-fn configChangeWatcher(allocator: std.mem.Allocator, config_manager: *Config_Manager, sh_config: Shared_Config) void {
-    var current_config: usize = 0;
+fn configChangeWatcher(
+    allocator: std.mem.Allocator,
+    config_manager: *Config_Manager,
+    sh_config: Shared_Config,
+) void {
+    var current_config: usize = 1;
     var config: Config = undefined;
     defer config.deinit();
 
@@ -110,7 +117,7 @@ fn configChangeWatcher(allocator: std.mem.Allocator, config_manager: *Config_Man
 
         if (current_config != new_config) {
             const parsed_config = parseConfigJSON(parts.next().?);
-            config = Config.init(parsed_config, allocator, null) catch |err| {
+            config = Config.init(parsed_config, allocator, null, new_config, false) catch |err| {
                 std.log.err("Config parse error: {any}", .{err});
                 return;
             };
@@ -151,7 +158,7 @@ fn handleRequest(
     var response_buffer: [4094]u8 = undefined;
 
     const request = ops.readClientRequest(conn, &request_buffer) catch {
-        handleError(conn, epoll_fd, connection);
+        ops.sendBadRequest(conn) catch {};
         return;
     };
 
@@ -169,10 +176,10 @@ fn handleRequest(
         return;
     };
 
-    var selected_strategy = config.conf.strategy_hash.get(path_info.path);
+    const selected_strategy = config.conf.strategy_hash.get(path_info.path);
 
-    if (selected_strategy) |_| {
-        selected_strategy.?.handle(conn, request, &response_buffer, config.*, path_info.path) catch {};
+    if (selected_strategy) |ss| {
+        ss.handle(conn, request, &response_buffer) catch {};
         ops.closeConnection(epoll_fd, conn, connection) catch {};
         return;
     }
@@ -185,14 +192,14 @@ fn handleRequest(
                 return;
             };
             var strategy = config.conf.strategy_hash.get(route) orelse continue;
-            strategy.handle(conn, request, &response_buffer, config.*, route) catch {};
+            strategy.handle(conn, request, &response_buffer) catch {};
             ops.closeConnection(epoll_fd, conn, connection) catch {};
             return;
         }
     }
     var general_strategy = config.conf.strategy_hash.get("*") orelse unreachable;
 
-    general_strategy.handle(conn, request, &response_buffer, config.*, "*") catch {};
+    general_strategy.handle(conn, request, &response_buffer) catch {};
     ops.closeConnection(epoll_fd, conn, connection) catch {};
 }
 

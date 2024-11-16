@@ -30,28 +30,27 @@ pub const Config_Manager = struct {
     }
 
     pub fn pushNewConfig(self: *Config_Manager, config: Config) !void {
-        const node = try self.allocator.create(Node);
+        const new_config = try self.allocator.create(Node);
         var head_ptr = self.head.load(.acquire);
-        node.* = .{ .data = config };
+        new_config.* = .{ .data = config };
 
-        if (head_ptr) |current_head| {
+        if (head_ptr) |old_config| {
             while (true) {
                 const result = self.head.cmpxchgWeak(
-                    current_head,
-                    node,
+                    old_config,
+                    new_config,
                     .acquire,
                     .monotonic,
                 );
 
                 if (result != null) {
-                    current_head.data.conf.strategy_hash.deinit();
-                    current_head.data.deinitBuilder();
+                    old_config.data.deinitMemory();
+                    old_config.data.deinitBuilder();
 
-                    if (current_head.data.conf.ssl) |s| {
-                        ssl_struct.deinit(@constCast(s));
+                    if (old_config.data.conf.ssl) |s| {
+                        ssl_struct.deinit(s);
                     }
-                    current_head.data.config_parsed.deinit();
-                    self.allocator.destroy(current_head);
+                    self.allocator.destroy(old_config);
                     break;
                 }
 
@@ -61,7 +60,7 @@ pub const Config_Manager = struct {
             return;
         }
 
-        self.head.store(node, .release);
+        self.head.store(new_config, .release);
     }
 
     pub fn getCurrentConfig(self: *Config_Manager) Config {

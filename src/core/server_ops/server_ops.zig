@@ -12,15 +12,15 @@ const posix = std.posix;
 const Connection = cx.Connection;
 const ConnectionData = cx.ConnectionData;
 
-pub fn acceptIncomingConnections(tcp_server: std.net.Server, epoll: Epoll, ssl_ctx: *?*ssl.SSL_CTX, connection: Connection) !void {
+pub fn acceptIncomingConnections(tcp_server: std.net.Server, epoll: Epoll, ssl_ctx: ?*ssl.SSL_CTX, connection: Connection) !void {
     while (true) {
         const conn = @constCast(&tcp_server).accept() catch |err| {
             if (err == error.WouldBlock) break; // No more connections to accept
             return err;
         };
         const fd = conn.stream.handle;
-        if (ssl_ctx.*) |_| {
-            ssl_ops.acceptSSL(fd, epoll, ssl_ctx.*, connection) catch |err| {
+        if (ssl_ctx) |_| {
+            ssl_ops.acceptSSL(fd, epoll, ssl_ctx, connection) catch |err| {
                 if (err == error.SSLHandshakeFailed or err == error.FailedToCreateSSLObject) {
                     try sendBadRequest(.{ .fd = conn.stream.handle, .ssl = null });
                     _ = std.posix.close(fd);
@@ -65,9 +65,6 @@ pub fn forwardResponseToClient(backend_fd: posix.fd_t, conn: ConnectionData, res
 
     // Clean up
     _ = std.posix.close(backend_fd);
-    if (conn.ssl) |s| {
-        _ = ssl.shutdown(s); // Only shut down SSL after entire response
-    }
 }
 
 pub fn closeConnection(epoll_fd: i32, conn: ConnectionData, connection: Connection) !void {

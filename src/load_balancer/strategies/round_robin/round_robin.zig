@@ -7,125 +7,104 @@ const Strategy = @import("../../Strategy.zig").Strategy;
 const Epoll = @import("../../../core/epoll/epoll_handler.zig").Epoll;
 const Config = @import("../../../config/config.zig").Config;
 const ConnectionData = @import("../../../core/connection/connection.zig").ConnectionData;
-const Backend_Manager = @import("backend_manager.zig").Backend_Manager;
+const MemoryRoute = @import("../../../core/shared_memory/RouteMemory.zig").MemoryRoute;
 
-const ServerData = struct {
+const BackendData = struct {
     server: Backend,
     attempts: u32,
 };
 
 pub const RoundRobin = struct {
-    backends: Backend_Manager = undefined,
-    backend_ptr: ?*Backend_Manager.Backend = null,
+    backends: []BackendData = undefined,
+    allocator: std.mem.Allocator = undefined,
+    address: usize = undefined,
+    memory_route: MemoryRoute = undefined,
 
-    pub fn init(self: RoundRobin, servers: []Backend, allocator: std.mem.Allocator) !Strategy {
+    pub fn init(
+        self: RoundRobin,
+        servers: []Backend,
+        allocator: std.mem.Allocator,
+        path: []const u8,
+        version: usize,
+    ) !Strategy {
         _ = self;
-        var bm = Backend_Manager.init(allocator);
+        var backends = try allocator.alloc(BackendData, servers.len);
 
-        for (servers) |value| {
-            try bm.push(.{ .server = value, .attempts = 0 });
+        for (servers, 0..) |value, i| {
+            backends[i] = BackendData{ .server = value, .attempts = 0 };
         }
 
         const rr = RoundRobin{
-            .backends = bm,
-            .backend_ptr = bm.head,
+            .backends = backends,
+            .allocator = allocator,
+            .memory_route = try MemoryRoute.read(path, version),
         };
 
         return Strategy{ .round_robin = rr };
     }
 
-    pub fn deinit(self: *RoundRobin) void {
-        self.backends.deinit();
+    pub fn deinit(self: RoundRobin) void {
+        self.memory_route.close();
+        self.allocator.free(self.backends);
     }
 
     pub fn handle(
-        self: *RoundRobin,
+        self: RoundRobin,
         conn: ConnectionData,
         request: []u8,
         response: []u8,
-        config: Config,
-        path: []const u8,
     ) !void {
+        const servers_count = self.backends.len;
         var servers_down: usize = 0;
-        var strategy_hash = config.conf.strategy_hash;
+        var current_server_index: usize = undefined;
+        var current_server: BackendData = undefined;
+        const server_address: *usize = @ptrCast(self.memory_route.memory);
 
-        try self.handleClientRequest(
-            &servers_down,
-            conn,
-            request,
-            response,
-            &strategy_hash,
-            path,
-        );
-    }
+        while (servers_count > servers_down) {
+            current_server_index = if (server_address.* >= self.backends.len) 0 else server_address.*;
 
-    fn handleClientRequest(
-        self: *RoundRobin,
-        servers_down: *usize,
-        conn: ConnectionData,
-        request: []u8,
-        response: []u8,
-        strategy_hash: *std.StringHashMap(Strategy),
-        path: []const u8,
-    ) !void {
-        const backends = strategy_hash.get(path).?.round_robin.backends;
-        const servers_count = backends.len;
-
-        while (servers_count > servers_down.*) {
-            if (self.backend_ptr) |current_server| {
-                if (current_server.data.attempts >= current_server.data.server.max_failure.?) {
-                    servers_down.* += 1;
-                    self.findNextServer(strategy_hash, path);
-                    continue;
-                }
-
-                const backend_fd = ops.connectToBackend(current_server.data.server.host) catch {
-                    current_server.data.attempts += 1;
-                    self.findNextServer(strategy_hash, path);
-                    continue;
-                };
-
-                // Forward request to backend
-                ops.forwardRequestToBackend(backend_fd, request) catch {
-                    std.posix.close(backend_fd);
-                    current_server.data.attempts += 1;
-                    self.findNextServer(strategy_hash, path);
-                    continue;
-                };
-
-                // Forward response back to client
-                ops.forwardResponseToClient(backend_fd, conn, response) catch {
-                    std.posix.close(backend_fd);
-                    current_server.data.attempts += 1;
-                    self.findNextServer(strategy_hash, path);
-                    continue;
-                };
-
-                // Reset attempts on successful connection
-                if (current_server.data.attempts > 0) {
-                    current_server.data.attempts = 0;
-                }
-
-                // Successfully handled the request, find the next server
-                self.findNextServer(strategy_hash, path);
-                return;
+            current_server = self.backends[current_server_index];
+            if (current_server.attempts >= current_server.server.max_failure.?) {
+                servers_down += 1;
+                server_address.* = (current_server_index + 1) % servers_count;
+                continue;
             }
 
-            // No more valid servers
-            try ops.sendBadGateway(conn);
+            const backend_fd = ops.connectToBackend(current_server.server.host) catch {
+                current_server.attempts += 1;
+                servers_down += 1;
+                server_address.* = (current_server_index + 1) % servers_count;
+                continue;
+            };
+
+            // Forward request to backend
+            ops.forwardRequestToBackend(backend_fd, request) catch {
+                std.posix.close(backend_fd);
+                current_server.attempts += 1;
+                server_address.* = (current_server_index + 1) % servers_count;
+                continue;
+            };
+
+            // Forward response back to client
+            ops.forwardResponseToClient(backend_fd, conn, response) catch {
+                std.posix.close(backend_fd);
+                current_server.attempts += 1;
+                server_address.* = (current_server_index + 1) % servers_count;
+                continue;
+            };
+
+            // Reset attempts on successful connection
+            if (current_server.attempts > 0) {
+                current_server.attempts = 0;
+            }
+
+            // Successfully handled the request, find the next server
+            server_address.* = (current_server_index + 1) % servers_count;
             return;
         }
 
-        // No backends available, return a 502 error
+        // No more valid servers
         try ops.sendBadGateway(conn);
-    }
-    fn findNextServer(
-        self: *RoundRobin,
-        strategy_hash: *std.StringHashMap(Strategy),
-        path: []const u8,
-    ) void {
-        // Move to the next server, wrapping around if necessary
-        self.backend_ptr = self.backend_ptr.?.next orelse self.backends.head;
-        strategy_hash.put(path, .{ .round_robin = self.* }) catch unreachable;
+        return;
     }
 };

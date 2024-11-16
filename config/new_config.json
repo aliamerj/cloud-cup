@@ -1,6 +1,5 @@
 {
   "root": "127.0.0.1:8088",
-  "security": true,
   "routes": {
     "*": {
       "backends": [

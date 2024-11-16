@@ -7,33 +7,35 @@ const ConnectionData = @import("../core/connection/connection.zig").ConnectionDa
 pub const Strategy = union(enum) {
     round_robin: Round_robin,
 
-    pub fn init(self: Strategy, servers: []Backend, allocator: std.mem.Allocator) !Strategy {
+    pub fn init(
+        self: Strategy,
+        servers: []Backend,
+        allocator: std.mem.Allocator,
+        path: []const u8,
+        version: usize,
+    ) !Strategy {
         switch (self) {
-            inline else => |strategy| return try strategy.init(servers, allocator),
+            inline else => |strategy| return try strategy.init(servers, allocator, path, version),
         }
     }
 
     pub fn handle(
-        self: *Strategy,
+        self: Strategy,
         conn: ConnectionData,
         request: []u8,
         response: []u8,
-        config: Config,
-        path: []const u8,
     ) !void {
-        switch (self.*) {
+        switch (self) {
             inline else => |strategy| {
-                var stra = @constCast(&strategy);
-                try stra.handle(conn, request, response, config, path);
+                try strategy.handle(conn, request, response);
             },
         }
     }
 
-    pub fn deinit(self: *Strategy) void {
-        switch (self.*) {
+    pub fn deinit(self: Strategy) void {
+        switch (self) {
             inline else => |strategy| {
-                var stra = @constCast(&strategy);
-                stra.deinit();
+                strategy.deinit();
             },
         }
     }
