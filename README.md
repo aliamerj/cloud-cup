@@ -25,7 +25,7 @@ This proxy is built for developers, DevOps engineers, and cloud infrastructure a
 
 5. Seamless Configuration Management
    - Use a simple JSON configuration file to define routes and backends.
-   - Hot reloading with cupctl lets you apply new configurations instantly without restarting or interrupting traffic.
+   - Hot reloading with [cupctl](https://github.com/cloud-cup/cup-cli) lets you apply new configurations instantly without restarting or interrupting traffic.
 
 7. Optimized for Linux
     - Built for performance using epoll for efficient I/O handling.
