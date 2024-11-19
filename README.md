@@ -135,3 +135,9 @@ Here’s what’s coming next for Cloud Cup:
 ## Contributing
 
 Contributions, bug reports, and feature requests are welcome! Please submit them via GitHub Issues.
+
+## Sponsors and Funding
+
+
+Cloud Cup is an early-stage project with immense potential. We’re actively seeking sponsors and funding to take Cloud Cup to the next level.
+- 💡 For sponsorship inquiries, please contact [aliamer19ali@gmail.com]
