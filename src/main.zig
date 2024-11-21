@@ -1,7 +1,6 @@
 const std = @import("std");
-
 const Config = @import("config/config.zig").Config;
-const Shared_Config = @import("core/shared_memory/SharedMemory.zig").SharedMemory([4096]u8);
+const Shared_Config = @import("shared_memory/SharedMemory.zig").SharedMemory([4096]u8);
 const Config_Manager = @import("config/config_managment.zig").Config_Manager;
 const Server = @import("server.zig").Server;
 

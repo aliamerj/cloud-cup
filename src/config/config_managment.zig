@@ -1,5 +1,9 @@
+const c = @cImport({
+    @cInclude("openssl/ssl.h");
+});
+
 const std = @import("std");
-const ssl_struct = @import("../ssl/SSL.zig");
+const ssl = @import("core").SSL;
 const Config = @import("config.zig").Config;
 
 const Atomic = std.atomic.Value;
@@ -23,7 +27,7 @@ pub const Config_Manager = struct {
         @constCast(&head.data).deinit();
 
         if (head.data.conf.ssl) |s| {
-            ssl_struct.deinit(@constCast(s));
+            ssl.deinit(s);
         }
 
         self.allocator.destroy(head);
@@ -48,7 +52,7 @@ pub const Config_Manager = struct {
                     old_config.data.deinitBuilder();
 
                     if (old_config.data.conf.ssl) |s| {
-                        ssl_struct.deinit(s);
+                        ssl.deinit(s);
                     }
                     self.allocator.destroy(old_config);
                     break;

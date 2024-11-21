@@ -2,7 +2,7 @@ const std = @import("std");
 const Config = @import("../config/config.zig").Config;
 const Diagnostic = @import("cmd/check/diagnostic.zig").Diagnostic;
 
-const Shared_Memory = @import("../core/shared_memory/SharedMemory.zig").SharedMemory([4096]u8);
+const Shared_Memory = @import("../shared_memory/SharedMemory.zig").SharedMemory([4096]u8);
 
 const Command = enum {
     ShowStatus,

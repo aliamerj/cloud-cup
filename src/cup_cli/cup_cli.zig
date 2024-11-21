@@ -2,7 +2,7 @@ const std = @import("std");
 const cmd = @import("commands.zig");
 
 const Config = @import("../config/config.zig").Config;
-const Shared_Memory = @import("../core/shared_memory/SharedMemory.zig").SharedMemory([4096]u8);
+const Shared_Memory = @import("../shared_memory/SharedMemory.zig").SharedMemory([4096]u8);
 const setNonblock = @import("../utils/utils.zig").setNonblock;
 
 pub fn setupCliSocket(

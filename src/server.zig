@@ -4,13 +4,12 @@ const cli = @import("cup_cli/cup_cli.zig");
 
 const Config = @import("config/config.zig").Config;
 const Config_Manager = @import("config/config_managment.zig").Config_Manager;
+const SharedConfig = @import("shared_memory/SharedMemory.zig").SharedMemory([4096]u8);
 
-const SharedConfig = @import("core/shared_memory/SharedMemory.zig").SharedMemory([4096]u8);
+const startWorker = @import("worker.zig").startWorker;
 
 const Pool = std.Thread.Pool;
 const WaitGroup = std.Thread.WaitGroup;
-
-const startWorker = @import("core/worker/worker.zig").startWorker;
 
 pub const Server = struct {
     pub fn run(config_manager: *Config_Manager, shared_config: SharedConfig) !void {

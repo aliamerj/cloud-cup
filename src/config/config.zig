@@ -1,22 +1,24 @@
 const std = @import("std");
-const ssl_struct = @import("../ssl/SSL.zig");
+
+const core = @import("core");
+
 const Strategy = @import("../load_balancer/Strategy.zig").Strategy;
-const Epoll = @import("../core/epoll/epoll_handler.zig").Epoll;
 const Route = @import("../load_balancer/route.zig").Route;
 const Builder = @import("../config/config_builder.zig").Builder;
-
-const Shared_Config = @import("../core/shared_memory/SharedMemory.zig").SharedMemory([4096]u8);
-const RouteMemory = @import("../core/shared_memory/RouteMemory.zig");
+const Shared_Config = @import("../shared_memory/SharedMemory.zig").SharedMemory([4096]u8);
+const RouteMemory = @import("../shared_memory/RouteMemory.zig");
 
 const Allocator = std.mem.Allocator;
-
 const JsonParsedValue = std.json.Parsed(std.json.Value);
+
+const ssl = core.SSL;
+const Epoll = core.Epoll;
 
 pub const Conf = struct {
     root: []const u8,
     routes: std.StringHashMap(Route),
     strategy_hash: std.StringHashMap(Strategy) = undefined,
-    ssl: ?*ssl_struct.SSL_CTX,
+    ssl: ?*ssl.SSL_CTX,
     ssl_certificate: []const u8 = "",
     ssl_certificate_key: []const u8 = "",
     security: bool,
@@ -110,7 +112,7 @@ pub const Config = struct {
         self.conf.routes.deinit();
 
         if (self.conf.ssl) |s| {
-            ssl_struct.deinit(@constCast(s));
+            ssl.deinit(s);
         }
     }
 

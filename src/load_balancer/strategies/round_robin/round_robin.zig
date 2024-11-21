@@ -1,13 +1,16 @@
 const std = @import("std");
-const ops = @import("../../../core/server_ops/server_ops.zig");
+const core = @import("core");
+
 const utils = @import("../../../utils/utils.zig");
 
 const Backend = @import("../../route.zig").Backend;
 const Strategy = @import("../../Strategy.zig").Strategy;
-const Epoll = @import("../../../core/epoll/epoll_handler.zig").Epoll;
 const Config = @import("../../../config/config.zig").Config;
-const ConnectionData = @import("../../../core/connection/connection.zig").ConnectionData;
-const MemoryRoute = @import("../../../core/shared_memory/RouteMemory.zig").MemoryRoute;
+const MemoryRoute = @import("../../../shared_memory/RouteMemory.zig").MemoryRoute;
+
+const ops = core.server_ops;
+const Epoll = core.Epoll;
+const ConnectionData = core.conn.ConnectionData;
 
 const BackendData = struct {
     server: Backend,

@@ -1,8 +1,8 @@
 const std = @import("std");
-const ssl_struc = @import("../ssl/SSL.zig");
+const ssl = @import("core").SSL;
 const r = @import("../load_balancer/route.zig");
-const SharedMemory = @import("../core/shared_memory/SharedMemory.zig").SharedMemory(usize);
-const RouteMemory = @import("../core/shared_memory/RouteMemory.zig");
+const SharedMemory = @import("../shared_memory/SharedMemory.zig").SharedMemory(usize);
+const RouteMemory = @import("../shared_memory/RouteMemory.zig");
 const Route = r.Route;
 const Backend = r.Backend;
 
@@ -11,7 +11,7 @@ pub const Builder = struct {
     allocator: std.mem.Allocator,
     root: []const u8 = undefined,
     routes: std.StringHashMap(Route) = undefined,
-    ssl: ?*ssl_struc.SSL_CTX,
+    ssl: ?*ssl.SSL_CTX,
     ssl_certificate: []const u8 = "",
     ssl_certificate_key: []const u8 = "",
     security: bool,
@@ -27,7 +27,7 @@ pub const Builder = struct {
 
         const root = parsed.value.object.get("root") orelse return error.MissingRootField;
         const routes = parsed.value.object.get("routes") orelse return error.MissingRoutesField;
-        const ssl = parsed.value.object.get("ssl");
+        const ssl_obj = parsed.value.object.get("ssl");
         const security = parsed.value.object.get("security");
 
         const root_value = try validateRoot(root);
@@ -35,7 +35,7 @@ pub const Builder = struct {
         const security_value = try validateSecurity(security);
 
         // SSL context initialization
-        const valid_ssl = try validateSSL(ssl);
+        const valid_ssl = try validateSSL(ssl_obj);
 
         var all_backend = std.ArrayList([]Backend).init(allocator);
         defer all_backend.deinit();
@@ -71,12 +71,12 @@ pub const Builder = struct {
         self.routes.deinit();
 
         if (self.ssl) |s| {
-            ssl_struc.deinit(s);
+            ssl.deinit(s);
         }
     }
 
     const Valid_SSL = struct {
-        ssl_ctx: ?*ssl_struc.SSL_CTX,
+        ssl_ctx: ?*ssl.SSL_CTX,
         ssl_certificate: []const u8,
         ssl_certificate_key: []const u8,
     };
@@ -94,12 +94,13 @@ pub const Builder = struct {
     fn validateSSL(ssl_value: ?std.json.Value) !Valid_SSL {
         if (ssl_value) |s_v| {
             switch (s_v) {
-                .object => |ssl| {
-                    const cert = ssl.get("ssl_certificate") orelse return error.MissingCertificate;
-                    const key = ssl.get("ssl_certificate_key") orelse return error.MissingCertificatePrivateKey;
+                .object => |ss| {
+                    const cert = ss.get("ssl_certificate") orelse return error.MissingCertificate;
+                    const key = ss.get("ssl_certificate_key") orelse return error.MissingCertificatePrivateKey;
                     const cert_path = try validateCertificate(cert);
                     const cert_key_path = try validateCertificateKey(key);
-                    const ssl_ctx = try ssl_struc.initializeSSLContext(cert_path, cert_key_path);
+
+                    const ssl_ctx = try ssl.initializeSSLContext(cert_path, cert_key_path);
 
                     return Valid_SSL{
                         .ssl_ctx = ssl_ctx,
@@ -272,3 +273,16 @@ pub const Builder = struct {
         }
     }
 };
+
+// test "Builder init with valid config" {
+//     _ = @import("../load_balancer/route.zig");
+//     std.testing.refAllDecls(@This());
+//     const allocator = std.testing.allocator;
+//     const valid_json = "{\"root\": \"127.0.0.1:8080\",\"routes\": {\"*\": {\"backends\": [{\"host\": \"127.0.0.1:8081\",\"max_failure\": 5}]},\"/\": {\"backends\": [{\"host\": \"127.0.0.1:8082\",\"max_failure\": 2},{\"host\": \"127.0.0.1:8083\",\"max_failure\": 10}]}}}";
+//     const config = try std.json.parseFromSlice(std.json.Value, allocator, valid_json, .{});
+
+//     const builder = try Builder.init(allocator, config, 1, false);
+//     defer builder.deinit();
+
+//     std.testing.expectEqual(builder.root, "127.0.0.1");
+// }
