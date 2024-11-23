@@ -17,7 +17,7 @@ jobs:
       - uses: mlugg/setup-zig@v1
       - run: |
           # Verify the presence of BoringSSL prebuilt files
-          ls -la libs/boringssl/build
+          ls -la libs/
 
           # Run Zig tests
           zig build test --summary all
