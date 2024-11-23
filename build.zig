@@ -101,14 +101,6 @@ pub fn build(b: *std.Build) void {
         .link_libc = true,
     });
 
-    // Add include path for BoringSSL headers
-    core_unit_tests.addIncludePath(b.path("libs/boringssl/include"));
-
-    // Add the BoringSSL libraries
-    core_unit_tests.addCSourceFile(.{ .file = b.path("libs/boringssl/build/libdecrepit.a") });
-    core_unit_tests.addCSourceFile(.{ .file = b.path("libs/boringssl/build/libcrypto.a") });
-    core_unit_tests.addCSourceFile(.{ .file = b.path("libs/boringssl/build/libssl.a") });
-    core_unit_tests.addCSourceFile(.{ .file = b.path("libs/boringssl/build/libpki.a") });
     const run_core_unit_tests = b.addRunArtifact(core_unit_tests);
 
     const test_step = b.step("test", "Run unit tests");
