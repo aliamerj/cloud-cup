@@ -15,4 +15,4 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: mlugg/setup-zig@v1
-      - run: zig build test --summary all
+      - run: zig build test --summary new
