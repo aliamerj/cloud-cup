@@ -15,11 +15,9 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: mlugg/setup-zig@v1
-      - name: Cache BoringSSL Build
-        uses: actions/cache@v3
-        with:
-          path: libs/boringssl/build
-          key: boringssl-${{ hashFiles('libs/boringssl/**') }}
-          restore-keys: |
-            boringssl-
-      - run: zig build test --summary all
+      - run: |
+          # Verify the presence of BoringSSL prebuilt files
+          ls -la libs/boringssl/build
+
+          # Run Zig tests
+          zig build test --summary all
