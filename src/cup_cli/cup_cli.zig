@@ -1,12 +1,12 @@
 const std = @import("std");
 const cmd = @import("commands.zig");
+const configuration = @import("config");
+const SharedConfig = @import("common").SharedConfig;
 
-const Config = @import("../config/config.zig").Config;
-const Shared_Memory = @import("../shared_memory/SharedMemory.zig").SharedMemory([4096]u8);
-const setNonblock = @import("../utils/utils.zig").setNonblock;
+const Config = configuration.Config;
 
 pub fn setupCliSocket(
-    shm: Shared_Memory,
+    shm: SharedConfig,
 ) void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -58,4 +58,11 @@ pub fn setupCliSocket(
             return std.debug.print("CLI Error: {any}\n", .{err});
         };
     }
+}
+
+fn setNonblock(fd: std.posix.fd_t) !void {
+    var flags = try std.posix.fcntl(fd, std.posix.F.GETFL, 0);
+    var flags_s: *std.posix.O = @ptrCast(&flags);
+    flags_s.NONBLOCK = true;
+    _ = try std.posix.fcntl(fd, std.posix.F.SETFL, flags);
 }

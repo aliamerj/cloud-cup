@@ -1,18 +1,18 @@
 const std = @import("std");
+const configuration = @import("config");
+const SharedConfig = @import("common").SharedConfig;
+const worker = @import("worker.zig");
+
 const utils = @import("utils/utils.zig");
 const cli = @import("cup_cli/cup_cli.zig");
 
-const Config = @import("config/config.zig").Config;
-const Config_Manager = @import("config/config_managment.zig").Config_Manager;
-const SharedConfig = @import("shared_memory/SharedMemory.zig").SharedMemory([4096]u8);
-
-const startWorker = @import("worker.zig").startWorker;
-
 const Pool = std.Thread.Pool;
 const WaitGroup = std.Thread.WaitGroup;
+const Config = configuration.Config;
+const ConfigManager = configuration.ConfigManager;
 
 pub const Server = struct {
-    pub fn run(config_manager: *Config_Manager, shared_config: SharedConfig) !void {
+    pub fn run(config_manager: *ConfigManager, shared_config: SharedConfig) !void {
         var gpa = std.heap.GeneralPurposeAllocator(.{}){};
         const allocator = gpa.allocator();
         defer _ = gpa.deinit();
@@ -65,7 +65,7 @@ pub const Server = struct {
         workers: []i32,
         address: std.net.Address,
         shared_config: SharedConfig,
-        config_manager: Config_Manager,
+        config_manager: ConfigManager,
     ) !void {
         for (0..workers.len) |i| {
             try spawnWorker(workers, i, address, shared_config, config_manager);
@@ -77,12 +77,12 @@ pub const Server = struct {
         index: usize,
         address: std.net.Address,
         shared_config: SharedConfig,
-        config_manager: Config_Manager,
+        config_manager: ConfigManager,
     ) !void {
         const pid = try std.posix.fork();
         switch (pid) {
             0 => {
-                try startWorker(address, config_manager, shared_config);
+                try worker.start(address, config_manager, shared_config);
                 std.posix.exit(0);
             },
             -1 => return error.ForkFailed,
@@ -110,7 +110,7 @@ pub const Server = struct {
         address: std.net.Address,
         shared_config: SharedConfig,
         allocator: std.mem.Allocator,
-        config_manager: Config_Manager,
+        config_manager: ConfigManager,
     ) !void {
         var thread_pool: Pool = undefined;
         var thread_safe_arena: std.heap.ThreadSafeAllocator = .{ .child_allocator = allocator };
@@ -142,7 +142,7 @@ pub const Server = struct {
         index: usize,
         server_addy: std.net.Address,
         shared_config: SharedConfig,
-        config_manager: Config_Manager,
+        config_manager: ConfigManager,
     ) void {
         var pid: i32 = workers[index];
         while (true) {

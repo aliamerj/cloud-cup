@@ -1,18 +1,18 @@
 const std = @import("std");
-
 const core = @import("core");
+const common = @import("common");
 
-const Strategy = @import("../load_balancer/Strategy.zig").Strategy;
-const Route = @import("../load_balancer/route.zig").Route;
-const Builder = @import("../config/config_builder.zig").Builder;
-const Shared_Config = @import("../shared_memory/SharedMemory.zig").SharedMemory([4096]u8);
-const RouteMemory = @import("../shared_memory/RouteMemory.zig");
+const Strategy = @import("loadBalancer").Strategy;
+const Route = @import("route.zig").Route;
+const Builder = @import("config_builder.zig").Builder;
 
 const Allocator = std.mem.Allocator;
 const JsonParsedValue = std.json.Parsed(std.json.Value);
 
 const ssl = core.SSL;
 const Epoll = core.Epoll;
+const RouteMemory = common.RouteMemory;
+const SharedConfig = common.SharedConfig;
 
 pub const Conf = struct {
     root: []const u8,
@@ -53,7 +53,7 @@ pub const Config = struct {
         };
         errdefer parsed.deinit();
 
-        const response = applyConfig(parsed, allocator, version, create) catch |err| {
+        const conf = applyConfig(parsed, allocator, version, create) catch |err| {
             if (writer) |w| {
                 var buf_m: [1024]u8 = undefined;
                 const err_message = try std.fmt.bufPrint(&buf_m, "Invaild json, '{s}'", .{@errorName(err)});
@@ -63,33 +63,22 @@ pub const Config = struct {
             return err;
         };
 
-        if (response.conf == null) {
-            if (writer) |w| {
-                var buf_m: [1024]u8 = undefined;
-                const err_message = try std.fmt.bufPrint(&buf_m, "Invaild json, '{s}'", .{response.err_message.?});
-                _ = try w.write(err_message);
-            } else {
-                std.log.err("{s}", .{response.err_message.?});
-            }
-            return error.UnsupportedStrategy;
-        }
-
         return Config{
             .config_parsed = parsed,
             .allocator = allocator,
-            .conf = response.conf.?,
+            .conf = conf,
             .version = version,
         };
     }
 
-    pub fn share(shared_memory: Shared_Config, version: usize, data: []u8) !void {
+    pub fn share(shared_memory: SharedConfig, version: usize, data: []u8) !void {
         var buffer: [4096]u8 = undefined;
-
         const config_data = try std.fmt.bufPrint(&buffer, "{d}|{s}", .{ version, data[0..data.len] });
         shared_memory.writeStringData(buffer[0..config_data.len]);
     }
 
     pub fn deinit(self: *Config) void {
+        self.deinitMemory();
         self.deinitBuilder();
         self.deinitStrategies();
         self.config_parsed.deinit();
@@ -128,40 +117,63 @@ pub const Config = struct {
         allocator: Allocator,
         version: usize,
         create: bool,
-    ) !ValidationMessage {
+    ) !Conf {
         var strategy_hash = std.StringHashMap(Strategy).init(allocator);
         errdefer strategy_hash.deinit();
-        const build = try Builder.init(allocator, config_parsed, version, create);
+        var build = try Builder.init(allocator, config_parsed, version, create);
+        errdefer build.deinit();
 
         var it = build.routes.iterator();
         while (it.next()) |e| {
-            const strategy = e.value_ptr.routeSetup() catch |err| {
-                if (err == error.UnsupportedStrategy) {
-                    var buffer: [1024]u8 = undefined;
-                    const message = try std.fmt.bufPrint(&buffer, "Error: Unsupported strategy '{s}' in route '{s}'\n", .{
-                        e.value_ptr.strategy,
-                        e.key_ptr.*,
-                    });
-                    return ValidationMessage{
-                        .err_message = message,
-                    };
-                }
-                return err;
-            };
+            const strategy = e.value_ptr.routeSetup();
             const strategy_init = try strategy.init(e.value_ptr.backends, allocator, e.key_ptr.*, version);
             try strategy_hash.put(e.key_ptr.*, strategy_init);
         }
 
-        return ValidationMessage{
-            .conf = .{
-                .root = build.root,
-                .routes = build.routes,
-                .strategy_hash = strategy_hash,
-                .ssl = build.ssl,
-                .ssl_certificate = build.ssl_certificate,
-                .ssl_certificate_key = build.ssl_certificate_key,
-                .security = build.security,
-            },
+        return Conf{
+            .root = build.root,
+            .routes = build.routes,
+            .strategy_hash = strategy_hash,
+            .ssl = build.ssl,
+            .ssl_certificate = build.ssl_certificate,
+            .ssl_certificate_key = build.ssl_certificate_key,
+            .security = build.security,
         };
     }
 };
+
+test "applyConfig - valid configuration" {
+    const allocator = std.testing.allocator;
+
+    const valid_json = "{\"root\": \"127.0.0.1:8080\"," ++ "\"routes\": {" ++ "\"*\": {\"backends\": [{\"host\": \"127.0.0.1:8081\",\"max_failure\": 5}]}," ++ "\"/\": {\"backends\": [" ++ "{\"host\": \"127.0.0.1:8082\",\"max_failure\": 2}," ++ "{\"host\": \"127.0.0.1:8083\",\"max_failure\": 10}]}" ++ "}}";
+    const json = try std.fmt.allocPrint(allocator, "{s}", .{valid_json});
+    defer allocator.free(json);
+
+    var config = try Config.init(json[0..], allocator, null, 1, true);
+    defer config.deinit();
+
+    try std.testing.expect(config.version == 1);
+    try std.testing.expectEqualStrings(config.conf.root, "127.0.0.1:8080");
+}
+
+test "applyConfig - missing required fields" {
+    const allocator = std.testing.allocator;
+
+    const missing_field_json = "{\"routes\": {\"/\": {\"backends\": [{\"host\": \"127.0.0.1:8082\"}]}}}"; // Missing root field
+    const json = try std.fmt.allocPrint(allocator, "{s}", .{missing_field_json});
+    defer allocator.free(json);
+
+    const err_config = Config.init(json[0..], allocator, null, 1, true) catch |err| err;
+    try std.testing.expect(err_config == error.MissingRootField);
+}
+
+test "Config  - invalid JSON data" {
+    const allocator = std.testing.allocator;
+
+    const fake_json = "fake json"; // Missing root field
+    const json = try std.fmt.allocPrint(allocator, "{s}", .{fake_json});
+    defer allocator.free(json);
+
+    const err_config = Config.init(json, allocator, null, 1, true) catch |err| err;
+    try std.testing.expect(err_config == error.SyntaxError);
+}

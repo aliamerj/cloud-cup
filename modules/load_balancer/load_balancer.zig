@@ -1,11 +1,10 @@
 const std = @import("std");
-const Backend = @import("route.zig").Backend;
-const Round_robin = @import("strategies/round_robin/round_robin.zig").RoundRobin;
-const Config = @import("../config/config.zig").Config;
+const Backend = @import("common").Backend;
+const Roundrobin = @import("round_robin.zig").RoundRobin;
 const ConnectionData = @import("core").conn.ConnectionData;
 
 pub const Strategy = union(enum) {
-    round_robin: Round_robin,
+    round_robin: Roundrobin,
 
     pub fn init(
         self: Strategy,

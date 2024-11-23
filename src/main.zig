@@ -1,8 +1,10 @@
 const std = @import("std");
-const Config = @import("config/config.zig").Config;
-const Shared_Config = @import("shared_memory/SharedMemory.zig").SharedMemory([4096]u8);
-const Config_Manager = @import("config/config_managment.zig").Config_Manager;
+const SharedConfig = @import("common").SharedConfig;
+const configuration = @import("config");
 const Server = @import("server.zig").Server;
+
+const Config = configuration.Config;
+const ConfigManager = configuration.ConfigManager;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -16,7 +18,7 @@ pub fn main() !void {
     };
 
     var mutex = std.Thread.Mutex{};
-    var shared_config = try Shared_Config.init(file_buffer, &mutex);
+    var shared_config = try SharedConfig.init(file_buffer, &mutex);
     defer shared_config.deinit();
 
     var config = Config.init(file_data, allocator, null, 1, true) catch |err| {
@@ -29,7 +31,7 @@ pub fn main() !void {
         config.deinit();
     }
 
-    var config_manager = Config_Manager.init(allocator);
+    var config_manager = ConfigManager.init(allocator);
     defer config_manager.deinit();
     try config_manager.pushNewConfig(config);
 

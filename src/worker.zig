@@ -1,13 +1,12 @@
 const std = @import("std");
 const core = @import("core");
+const configuration = @import("config");
+const SharedConfig = @import("common").SharedConfig;
 
 const utils = @import("utils/utils.zig");
 const cli = @import("cup_cli/cup_cli.zig");
 
-const Config = @import("config/config.zig").Config;
-const Strategy = @import("load_balancer/Strategy.zig").Strategy;
-const Config_Manager = @import("config/config_managment.zig").Config_Manager;
-const Shared_Config = @import("shared_memory/SharedMemory.zig").SharedMemory([4096]u8);
+const Strategy = @import("loadBalancer").Strategy;
 const secure = @import("security/security.zig").secure;
 
 const Pool = std.Thread.Pool;
@@ -17,9 +16,11 @@ const ops = core.server_ops;
 const Epoll = core.Epoll;
 const Connection = core.conn.Connection;
 const ConnectionData = core.conn.ConnectionData;
+const ConfigManager = configuration.ConfigManager;
+const Config = configuration.Config;
 
 // strat the server with epoll
-pub fn startWorker(server_address: std.net.Address, config_manager: Config_Manager, shared_config: Shared_Config) !void {
+pub fn start(server_address: std.net.Address, config_manager: ConfigManager, shared_config: SharedConfig) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
@@ -75,7 +76,7 @@ fn mainEventLoop(
     epoll: Epoll,
     wait_group: *WaitGroup,
     thread_pool: *Pool,
-    config_manager: *Config_Manager,
+    config_manager: *ConfigManager,
     connection: *Connection,
 ) !void {
     var events: [1024]std.os.linux.epoll_event = undefined;
@@ -101,8 +102,8 @@ fn mainEventLoop(
 
 fn configChangeWatcher(
     allocator: std.mem.Allocator,
-    config_manager: *Config_Manager,
-    sh_config: Shared_Config,
+    config_manager: *ConfigManager,
+    sh_config: SharedConfig,
 ) void {
     var current_config: usize = 1;
     var config: Config = undefined;

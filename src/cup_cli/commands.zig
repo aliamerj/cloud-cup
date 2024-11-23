@@ -1,8 +1,9 @@
 const std = @import("std");
-const Config = @import("../config/config.zig").Config;
+const configuration = @import("config");
+const SharedConfig = @import("common").SharedConfig;
 const Diagnostic = @import("cmd/check/diagnostic.zig").Diagnostic;
 
-const Shared_Memory = @import("../shared_memory/SharedMemory.zig").SharedMemory([4096]u8);
+const Config = configuration.Config;
 
 const Command = enum {
     ShowStatus,
@@ -15,7 +16,7 @@ const Command = enum {
 pub fn processCLICommand(
     command: []u8,
     client_conn: std.net.Server.Connection,
-    shm: Shared_Memory,
+    shm: SharedConfig,
     allocator: std.mem.Allocator,
 ) !void {
     // Parse the command and execute the corresponding action
@@ -41,7 +42,7 @@ fn respondWithStatus(client_conn: std.net.Server.Connection) !void {
     try client_conn.stream.writer().writeAll(response);
 }
 
-fn respondWithConfig(client_conn: std.net.Server.Connection, shm: Shared_Memory) !void {
+fn respondWithConfig(client_conn: std.net.Server.Connection, shm: SharedConfig) !void {
     const shared_config = shm.readData();
     var parts = std.mem.split(u8, shared_config[0..], "|");
     _ = parts.next();
@@ -51,7 +52,7 @@ fn respondWithConfig(client_conn: std.net.Server.Connection, shm: Shared_Memory)
 
 fn respondWithDiagnostics(
     client_conn: std.net.Server.Connection,
-    shm: Shared_Memory,
+    shm: SharedConfig,
     allocator: std.mem.Allocator,
 ) !void {
     var diagnostics = std.ArrayList(Diagnostic).init(allocator);
@@ -97,7 +98,7 @@ fn gatherDiagnostics(config: *Config, diagnostics: *std.ArrayList(Diagnostic)) !
 fn applyNewConfig(
     client_conn: std.net.Server.Connection,
     command: []u8,
-    shm: Shared_Memory,
+    shm: SharedConfig,
     allocator: std.mem.Allocator,
 ) !void {
     var parts = std.mem.split(u8, command, "|");
@@ -141,7 +142,7 @@ fn loadConfigFile(file_path: []const u8, buffer: *[4096]u8) ![]const u8 {
     };
 }
 
-fn parseSharedConfigVersion(shm: Shared_Memory) !usize {
+fn parseSharedConfigVersion(shm: SharedConfig) !usize {
     const version_str = @constCast(&std.mem.split(u8, shm.readData()[0..], "|")).next().?;
     return std.fmt.parseInt(usize, version_str, 10);
 }

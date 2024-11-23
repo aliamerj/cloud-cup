@@ -1,16 +1,14 @@
 const std = @import("std");
 const core = @import("core");
-
-const utils = @import("../../../utils/utils.zig");
-
-const Backend = @import("../../route.zig").Backend;
-const Strategy = @import("../../Strategy.zig").Strategy;
-const Config = @import("../../../config/config.zig").Config;
-const MemoryRoute = @import("../../../shared_memory/RouteMemory.zig").MemoryRoute;
+const common = @import("common");
+const Strategy = @import("load_balancer.zig").Strategy;
 
 const ops = core.server_ops;
 const Epoll = core.Epoll;
 const ConnectionData = core.conn.ConnectionData;
+
+const Backend = common.Backend;
+const RouteMemory = common.RouteMemory.MemoryRoute;
 
 const BackendData = struct {
     server: Backend,
@@ -21,7 +19,7 @@ pub const RoundRobin = struct {
     backends: []BackendData = undefined,
     allocator: std.mem.Allocator = undefined,
     address: usize = undefined,
-    memory_route: MemoryRoute = undefined,
+    memory_route: RouteMemory = undefined,
 
     pub fn init(
         self: RoundRobin,
@@ -40,7 +38,7 @@ pub const RoundRobin = struct {
         const rr = RoundRobin{
             .backends = backends,
             .allocator = allocator,
-            .memory_route = try MemoryRoute.read(path, version),
+            .memory_route = try RouteMemory.read(path, version),
         };
 
         return Strategy{ .round_robin = rr };
