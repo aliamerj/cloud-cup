@@ -1,9 +1,11 @@
 const std = @import("std");
 const configuration = @import("config");
 const SharedConfig = @import("common").SharedConfig;
-const Diagnostic = @import("cmd/check/diagnostic.zig").Diagnostic;
-
 const Config = configuration.Config;
+
+const respondWithDiagnostics = @import("cmd/check/check_ops.zig").respondWithDiagnostics;
+const respondWithConfig = @import("cmd/show/show_config.zig").respondWithConfig;
+const applyNewConfig = @import("cmd/apply/apply_new_config.zig").applyNewConfig;
 
 const Command = enum {
     ShowStatus,
@@ -40,111 +42,6 @@ fn parseCommand(command: []const u8) Command {
 fn respondWithStatus(client_conn: std.net.Server.Connection) !void {
     const response = "Cloud-Cup is running";
     try client_conn.stream.writer().writeAll(response);
-}
-
-fn respondWithConfig(client_conn: std.net.Server.Connection, shm: SharedConfig) !void {
-    const shared_config = shm.readData();
-    var parts = std.mem.split(u8, shared_config[0..], "|");
-    _ = parts.next();
-    const json = std.mem.trimRight(u8, parts.next().?, &[_]u8{ 0, '\n', '\r', ' ', '\t' });
-    try client_conn.stream.writer().writeAll(json);
-}
-
-fn respondWithDiagnostics(
-    client_conn: std.net.Server.Connection,
-    shm: SharedConfig,
-    allocator: std.mem.Allocator,
-) !void {
-    var diagnostics = std.ArrayList(Diagnostic).init(allocator);
-    var output = std.ArrayList(u8).init(allocator);
-    defer diagnostics.deinit();
-    defer output.deinit();
-
-    const file_data = shm.readData();
-    var parts = std.mem.split(u8, file_data[0..], "|");
-    _ = parts.next();
-    const json = std.mem.trimRight(u8, parts.next().?, &[_]u8{ 0, '\n', '\r', ' ', '\t' });
-
-    var buffer: [4096]u8 = undefined;
-    std.mem.copyForwards(u8, &buffer, json);
-    var config = try Config.init(
-        buffer[0..json.len],
-        allocator,
-        null,
-        1,
-        false,
-    );
-    defer {
-        config.conf.strategy_hash.deinit();
-        config.deinitBuilder();
-        config.config_parsed.deinit();
-    }
-    try gatherDiagnostics(&config, &diagnostics);
-
-    try std.json.stringify(diagnostics.items, .{}, output.writer());
-    try client_conn.stream.writer().writeAll(output.items);
-}
-
-fn gatherDiagnostics(config: *Config, diagnostics: *std.ArrayList(Diagnostic)) !void {
-    var routes = config.conf.routes.iterator();
-    while (routes.next()) |kv| {
-        for (kv.value_ptr.backends) |backend| {
-            const diagnostic = Diagnostic.checkBackend(backend.host, kv.key_ptr.*);
-            try diagnostics.append(diagnostic);
-        }
-    }
-}
-
-fn applyNewConfig(
-    client_conn: std.net.Server.Connection,
-    command: []u8,
-    shm: SharedConfig,
-    allocator: std.mem.Allocator,
-) !void {
-    var parts = std.mem.split(u8, command, "|");
-    _ = parts.next();
-    const file_path = parts.next();
-
-    if (file_path == null) {
-        try client_conn.stream.writer().writeAll("File path for new config required\n");
-        return;
-    }
-    const config_path = std.mem.trim(u8, file_path.?, "\n");
-
-    var buffer: [4096]u8 = undefined;
-    const file_data = try loadConfigFile(config_path, &buffer);
-    const config_version = try parseSharedConfigVersion(shm);
-
-    var config = Config.init(
-        buffer[0..file_data.len],
-        allocator,
-        client_conn.stream.writer(),
-        config_version + 1,
-        true,
-    ) catch {
-        return;
-    };
-    defer {
-        config.conf.strategy_hash.deinit();
-        config.deinitBuilder();
-        config.config_parsed.deinit();
-    }
-
-    try Config.share(shm, config_version + 1, buffer[0..file_data.len]);
-    try client_conn.stream.writer().writeAll("New config applied successfully\n");
-}
-
-fn loadConfigFile(file_path: []const u8, buffer: *[4096]u8) ![]const u8 {
-    return std.fs.cwd().readFile(file_path, buffer) catch |err| {
-        var error_message: [128]u8 = undefined;
-        const message = try std.fmt.bufPrint(&error_message, "Failed to load config '{s}': {s}", .{ file_path, @errorName(err) });
-        return error_message[0..message.len];
-    };
-}
-
-fn parseSharedConfigVersion(shm: SharedConfig) !usize {
-    const version_str = @constCast(&std.mem.split(u8, shm.readData()[0..], "|")).next().?;
-    return std.fmt.parseInt(usize, version_str, 10);
 }
 
 fn respondWithUnknownCommand(client_conn: std.net.Server.Connection) !void {

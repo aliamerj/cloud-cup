@@ -103,8 +103,23 @@ pub fn build(b: *std.Build) void {
 
     const run_core_unit_tests = b.addRunArtifact(core_unit_tests);
 
+    const main_unit_tests = b.addTest(.{
+        .root_source_file = b.path("src/cup_cli/cup_cli.zig"),
+        .target = target,
+        .optimize = optimize,
+        .link_libc = true,
+    });
+
+    main_unit_tests.root_module.addImport("core", core_md);
+    main_unit_tests.root_module.addImport("common", common_md);
+    main_unit_tests.root_module.addImport("config", config_md);
+    main_unit_tests.root_module.addImport("loadBalancer", lb_md);
+
+    const run_main_unit_tests = b.addRunArtifact(main_unit_tests);
+
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_common_unit_tests.step);
     test_step.dependOn(&run_core_unit_tests.step);
     test_step.dependOn(&run_config_unit_tests.step);
+    test_step.dependOn(&run_main_unit_tests.step);
 }

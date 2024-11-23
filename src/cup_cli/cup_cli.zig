@@ -66,3 +66,9 @@ fn setNonblock(fd: std.posix.fd_t) !void {
     flags_s.NONBLOCK = true;
     _ = try std.posix.fcntl(fd, std.posix.F.SETFL, flags);
 }
+
+test "test cli commands" {
+    _ = @import("cmd/apply/apply_new_config.zig");
+    _ = @import("cmd/show/show_config.zig");
+    _ = @import("cmd/check/check_ops.zig");
+}
