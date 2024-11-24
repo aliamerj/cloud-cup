@@ -1,3 +1,4 @@
+const builtin = @import("builtin");
 const std = @import("std");
 const SharedConfig = @import("common").SharedConfig;
 const configuration = @import("config");
@@ -7,6 +8,10 @@ const Config = configuration.Config;
 const ConfigManager = configuration.ConfigManager;
 
 pub fn main() !void {
+    if (builtin.os.tag != .linux) {
+        std.log.err("This application only supports Linux.", .{});
+        return;
+    }
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
