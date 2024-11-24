@@ -1,6 +1,9 @@
 {
   "root": "127.0.0.1:8080",
-
+  "ssl": {
+    "ssl_certificate": "ssl_key/certificate.crt",
+    "ssl_certificate_key": "ssl_key/private.key"
+  },
   "routes": {
     "*": {
       "backends": [

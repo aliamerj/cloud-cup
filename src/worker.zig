@@ -3,11 +3,10 @@ const core = @import("core");
 const configuration = @import("config");
 const SharedConfig = @import("common").SharedConfig;
 
-const utils = @import("utils/utils.zig");
 const cli = @import("cup_cli/cup_cli.zig");
 
 const Strategy = @import("loadBalancer").Strategy;
-const secure = @import("security/security.zig").secure;
+const secure = @import("security").secure;
 
 const Pool = std.Thread.Pool;
 const WaitGroup = std.Thread.WaitGroup;
@@ -130,7 +129,7 @@ fn configChangeWatcher(
             };
             current_config = new_config;
         }
-        std.time.sleep(1_000_000_000);
+        std.time.sleep(100_000);
     }
 }
 
@@ -173,7 +172,7 @@ fn handleRequest(
         };
     }
 
-    const path_info = utils.extractPath(request) catch {
+    const path_info = extractPath(request) catch {
         handleError(conn, epoll_fd, connection);
         return;
     };
@@ -208,4 +207,80 @@ fn handleRequest(
 fn handleError(conn: *ConnectionData, epoll_fd: std.posix.fd_t, connection: *Connection) void {
     ops.sendBadGateway(conn.*) catch {};
     ops.closeConnection(epoll_fd, conn, connection) catch {};
+}
+
+const ExtractedPath = struct {
+    sub: bool,
+    path: []const u8,
+};
+
+pub fn extractPath(request: []const u8) !ExtractedPath {
+    const first_space_index = std.mem.indexOf(u8, request, " ") orelse return error.InvalidPath;
+    const second_space_index = std.mem.indexOf(u8, request[first_space_index + 1 ..], " ") orelse return error.InvalidPath;
+
+    var path = request[first_space_index + 1 .. first_space_index + 1 + second_space_index];
+
+    if (std.mem.indexOf(u8, path, "?")) |query_index| {
+        path = path[0..query_index];
+    }
+
+    if (path.len > 1 and std.mem.endsWith(u8, path, "/")) {
+        path = path[0 .. path.len - 1];
+    }
+
+    const sub_route = std.mem.indexOf(u8, path[1..], "/") != null and path.len > 1;
+
+    return ExtractedPath{
+        .sub = sub_route,
+        .path = path,
+    };
+}
+
+test "extractPath valid inputs" {
+    try std.testing.expectEqualDeep(
+        ExtractedPath{ .sub = false, .path = "/" },
+        try extractPath("GET / HTTP/1.1"),
+    );
+
+    try std.testing.expectEqualDeep(
+        ExtractedPath{ .sub = false, .path = "/path" },
+        try extractPath("GET /path HTTP/1.1"),
+    );
+
+    try std.testing.expectEqualDeep(
+        ExtractedPath{ .sub = false, .path = "/path" },
+        try extractPath("GET /path?key=value HTTP/1.1"),
+    );
+
+    try std.testing.expectEqualDeep(
+        ExtractedPath{ .sub = true, .path = "/parent/child" },
+        try extractPath("GET /parent/child HTTP/1.1"),
+    );
+
+    try std.testing.expectEqualDeep(
+        ExtractedPath{ .sub = false, .path = "/path" },
+        try extractPath("GET /path/ HTTP/1.1"),
+    );
+}
+
+test "extractPath invalid inputs" {
+    try std.testing.expectError(error.InvalidPath, extractPath(""));
+    try std.testing.expectError(error.InvalidPath, extractPath("GET HTTP/1.1"));
+    try std.testing.expectError(error.InvalidPath, extractPath("INVALID REQUEST"));
+}
+
+test "parseConfigVersion parses valid version numbers" {
+    const version = parseConfigVersion("42") catch unreachable;
+    try std.testing.expect(version == 42);
+}
+
+test "parseConfigJSON trims and copies JSON data" {
+    const json_data = "{ \"key\": \"value\" }\n";
+    const result = parseConfigJSON(json_data);
+    try std.testing.expectEqualStrings("{ \"key\": \"value\" }", result);
+}
+
+test "parseConfigJSON handles empty data" {
+    const result = parseConfigJSON("");
+    try std.testing.expectEqualStrings("", result);
 }

@@ -3,7 +3,6 @@ const configuration = @import("config");
 const SharedConfig = @import("common").SharedConfig;
 const worker = @import("worker.zig");
 
-const utils = @import("utils/utils.zig");
 const cli = @import("cup_cli/cup_cli.zig");
 
 const Pool = std.Thread.Pool;
@@ -19,12 +18,16 @@ pub const Server = struct {
 
         const config = config_manager.getCurrentConfig();
 
-        const server_address = parseServerAddress(config.conf.root) catch |err| {
+        const address = try parseServerAddress(config.conf.root);
+        const server_address = std.net.Address.resolveIp(address.host, address.port) catch |err| {
             std.log.err("Failed to parse server address: {any}\n", .{err});
             return;
         };
-
-        std.log.info("Server listening on {s}\n", .{config.conf.root});
+        if (config.conf.ssl) |_| {
+            std.log.info("Server listening on https://{s}\n", .{config.conf.root});
+        } else {
+            std.log.info("Server listening on {s}\n", .{config.conf.root});
+        }
 
         const cpu_count = try std.Thread.getCpuCount();
         const workers = try initializeWorkerArray(cpu_count, allocator);
@@ -39,10 +42,6 @@ pub const Server = struct {
         defer terminateProcess(cli_pid);
 
         try monitorProcesses(workers, cli_pid, server_address, shared_config, allocator, config_manager.*);
-    }
-
-    fn parseServerAddress(root: []const u8) !std.net.Address {
-        return utils.parseServerAddress(root);
     }
 
     fn initializeWorkerArray(count: usize, allocator: std.mem.Allocator) ![]i32 {
@@ -179,3 +178,56 @@ pub const Server = struct {
         }
     }
 };
+
+const Address = struct {
+    host: []const u8,
+    port: u16,
+};
+
+pub fn parseServerAddress(input: []const u8) !Address {
+    if (input.len == 0) {
+        return error.InvalidAddress;
+    }
+    var split_iter = std.mem.splitSequence(u8, input, ":");
+    const host = split_iter.next() orelse return error.InvalidHost;
+    const port_str = split_iter.next() orelse null; // Use null if no port is specified
+    if (host.len == 0) return error.EmptyHost;
+    var port: u16 = undefined;
+    if (port_str != null) {
+        port = try std.fmt.parseInt(u16, port_str.?, 10);
+    } else {
+        port = 80;
+    }
+
+    return Address{
+        .host = host,
+        .port = port,
+    };
+}
+
+test "parseServerAddress valid inputs" {
+    try std.testing.expectEqualDeep(
+        Address{ .host = "127.0.0.1", .port = 8080 },
+        try parseServerAddress("127.0.0.1:8080"),
+    );
+
+    try std.testing.expectEqualDeep(
+        Address{ .host = "127.0.0.1", .port = 80 },
+        try parseServerAddress("127.0.0.1"),
+    );
+
+    try std.testing.expectEqualDeep(
+        Address{ .host = "example.com", .port = 443 },
+        try parseServerAddress("example.com:443"),
+    );
+
+    try std.testing.expectEqualDeep(
+        Address{ .host = "example.com", .port = 80 },
+        try parseServerAddress("example.com"),
+    );
+}
+
+test "parseServerAddress invalid inputs" {
+    try std.testing.expectError(error.EmptyHost, parseServerAddress(":8080"));
+    try std.testing.expectError(error.InvalidAddress, parseServerAddress(""));
+}

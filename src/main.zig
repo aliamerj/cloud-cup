@@ -11,9 +11,19 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
+    // Retrieve and parse command-line arguments
+    const args = try std.process.argsAlloc(allocator);
+    defer std.process.argsFree(allocator, args);
+
+    if (args.len < 2) {
+        std.log.err("Usage: {s} <config_file_path>", .{args[0]});
+        return;
+    }
+
+    const config_path = args[1];
     var file_buffer: [4096]u8 = undefined;
-    const file_data = std.fs.cwd().readFile("config/main_config.json", &file_buffer) catch |err| {
-        std.log.err("Failed to load configuration file 'config/main_config.json': {any}", .{err});
+    const file_data = std.fs.cwd().readFile(config_path, &file_buffer) catch |err| {
+        std.log.err("Failed to load configuration file '{s}': {any}", .{ config_path, err });
         return;
     };
 
@@ -26,10 +36,7 @@ pub fn main() !void {
         return;
     };
 
-    defer {
-        config.deinitMemory();
-        config.deinit();
-    }
+    defer config.deinit();
 
     var config_manager = ConfigManager.init(allocator);
     defer config_manager.deinit();
@@ -38,4 +45,10 @@ pub fn main() !void {
     try Config.share(shared_config, 1, file_data);
 
     try Server.run(&config_manager, shared_config);
+}
+
+test "test all" {
+    _ = @import("server.zig");
+    _ = @import("worker.zig");
+    _ = @import("cup_cli/cup_cli.zig");
 }
