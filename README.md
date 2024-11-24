@@ -6,13 +6,31 @@
 </div>
 
 
-
-
 **Cloud Cup** is a high-performance, lightweight reverse proxy built for Linux in Zig. Designed for simplicity, speed, and scalability, Cloud Cup seamlessly handles HTTP/1 and TLS/SSL connections (powered by BoringSSL) while providing easy configuration and dynamic management for modern applications. all configured through an easy-to-use JSON file.
 
 This is **version 0.1.0**, the foundation for an innovative platform that aims to redefine reverse proxy and load balancing solutions.
 
 This proxy is built for developers, DevOps engineers, and cloud infrastructure architects who need high performance, automatic scaling, and dynamic service management.
+
+# Master-Worker Architecture  
+
+Cloud Cup’s architecture revolves around its **master** and **worker processes**, each with distinct responsibilities:  
+
+## Master Process  
+
+- **Validates and applies configurations** at startup, ensuring they are correct before spawning workers.  
+- **Hot reloads configurations** via the CLI (`cupctl`), where the CLI process validates the new configuration and distributes it to workers dynamically.  
+- Spawns **multiple worker processes** and monitors them to ensure high availability. If a worker process exits unexpectedly, the master immediately spawns a replacement.  
+- Manages the CLI command listener, enabling seamless interaction for updates and diagnostics.  
+
+## Worker Process  
+
+- All workers **listen on the same port and address**, leveraging the kernel to distribute incoming requests efficiently among them.  
+- Each worker operates with its own **epoll instance** for high-performance request handling.  
+- Utilizes an independent **thread pool** to handle requests concurrently, ensuring scalability and responsiveness.  
+- Dynamically receives and applies configuration updates from the master process, maintaining consistency across all workers.  
+
+This architecture ensures **Cloud Cup remains operational** even under heavy load or in the event of individual worker failures, delivering unparalleled reliability and performance.  
 
 # 🚀 Key Features
 1. HTTP/1 and TLS/SSL Support
