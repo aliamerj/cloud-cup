@@ -6,9 +6,11 @@
 </div>
 
 
-**Cloud Cup** is a high-performance, lightweight reverse proxy built for Linux in Zig. Designed for simplicity, speed, and scalability, Cloud Cup seamlessly handles HTTP/1 and TLS/SSL connections (powered by BoringSSL) while providing easy configuration and dynamic management for modern applications. all configured through an easy-to-use JSON file.
+**Cloud Cup** is a modern, high-performance reverse proxy built for Linux in Zig, designed to handle today's web traffic demands with speed, scalability, and resilience.
 
-This is **version 0.1.0**, the foundation for an innovative platform that aims to redefine reverse proxy and load balancing solutions.
+At its core, Cloud Cup implements a master-worker architecture that ensures uninterrupted service, dynamic traffic management, and robust request handling. Whether you’re a developer building microservices or an operations engineer managing web infrastructure, Cloud Cup offers the tools to keep your applications running smoothly and efficiently.
+
+This is **v0.1.0-alpha**, the foundation for an innovative platform that aims to redefine reverse proxy and load balancing solutions.
 
 This proxy is built for developers, DevOps engineers, and cloud infrastructure architects who need high performance, automatic scaling, and dynamic service management.
 
@@ -60,91 +62,63 @@ In the age of cloud computing, having a reliable, scalable, and fast Reverse Pro
 - Ease of Use: Apply changes on the fly with cupctl without downtime.
 - Security: Protect your services with modern TLS/SSL.
 
-# 🛠️ Configuration
-You can configure Cloud-Cup by editing the `config/main_config.json` file. This file allows you to define the list of backend servers, customize load-balancing strategies, and more.
+# Getting Started with Cloud Cup  
+## ⚙️ Prerequisites  
 
-Note: By default, Cloud-Cup will use the Round-Robin strategy if the `strategy` field  under the http flag is not specified.
+Make sure you have the following installed on your system:  
 
-## Configuration Structure
+- **Zig 0.13**: The build system requires Zig 0.13 or later.  
 
-The routing configuration is defined in a JSON format and contains two main components:
-
-  1. Root Address: The address where the server listens for incoming requests.
-  2. Routes: A mapping of URL paths to backend services.
-
-## example 
-```json
-{
-  "root": "127.0.0.1:8080",
-  "ssl": {  
-    "ssl_certificate": "ssl_key/certificate.crt",  
-    "ssl_certificate_key": "ssl_key/private.key"  
-  },
-  "routes": {
-    "*": {
-      "backends": [
-        {
-          "host": "127.0.0.1:8081",
-          "max_failure": 5
-        }
-      ]
-    },
-    "/": {
-      "backends": [
-        {
-          "host": "127.0.0.1:8082",
-          "max_failure": 5
-        }
-      ]
-    },
-    "/game/*": {
-      "backends": [
-        {
-          "host": "127.0.0.1:8083",
-          "max_failure": 5
-        },
-        {
-          "host": "127.0.0.1:8084",
-          "max_failure": 5
-        },
-        {
-          "host": "127.0.0.1:8085",
-          "max_failure": 3
-        }
-      ],
-      "strategy": "round-robin"
-    },
-    "/game/dev": {
-      "backends": [
-        {
-          "host": "127.0.0.1:8086",
-          "max_failure": 5
-        },
-        {
-          "host": "127.0.0.1:8087",
-          "max_failure": 5
-        },
-        {
-          "host": "127.0.0.1:8088",
-          "max_failure": 5
-        }
-      ],
-      "strategy": "round-robin"
-    }
-  }
-}
+To verify your Zig version:  
+```bash
+zig version
 ```
-In this example, the load balancer will distribute traffic between three backend servers running on ports 8081, 8082,..etc on the localhost.
+## 📦 Downloading Cloud Cup  
 
-## Default Fallback
+You can start by obtaining Cloud Cup in one of two ways:  
 
-  - If neither an exact nor a wildcard match is found, the server falls back to the default route defined as `*`.
-  - This route is used to catch all other requests not explicitly defined in the configuration.
+1. **Download the release archive**:  
+   - Grab the file `cloud-cup-0.1.0-alpha.1.tar.gz` attached to the [v0.1.0-alpha.1 release](https://github.com/cloud-cup/cloud-cup/releases/tag/v0.1.0-alpha.1).  
+
+2. **Clone the project from GitHub**:  
+   - To test the `v0.1.0-alpha.1` release, clone the release branch:  
+     ```bash
+     git clone --branch release-0.1 https://github.com/cloud-cup/cloud-cup.git
+     ```  
+   - For the latest development version, clone the main branch:  
+     ```bash
+     git clone https://github.com/cloud-cup/cloud-cup.git
+     ```
+   - Run the installation:
+    ```bash
+     make install
+    ```
+   - Build the project in release mode:
+    ```bash
+    zig build -Drelease=true
+    ```
+After the build completes, you’ll have an executable binary for Cloud Cup. in `zig-out/bin/cloud-cup`
+
+## 🏃 Running Cloud Cup
+
+To run Cloud Cup:
+
+  - Set up your configuration file:
+    Create a JSON configuration file (e.g., my_config.json) to define the server settings, routes, and backends. 
+    Refer to the [Configuration Guide](https://cloud-cup.netlify.app/docs/3_configuration) for details on how to structure your configuration.
+
+  - Start the application:
+    Use the following command to launch Cloud Cup with your configuration file:
+    ```bash 
+    ./cloud-cup my_config.json
+    ```
+  - Check if the server is running:
+    Once started, Cloud Cup will begin listening for incoming connections based on your configuration.
 
 
 ## 🌟 Roadmap
 Here’s what’s coming next for Cloud Cup:
-- HTTP/2 and HTTP/3 Support: Enhance speed and efficiency.
+- HTTP/2 Support: Enhance speed and efficiency.
 - Load Balancing Strategies: Add weighted round-robin, least connections, and more.
 - Metrics and Monitoring: Export stats for integration with Prometheus or Grafana.
 - Web Admin Dashboard: Manage configurations through a user-friendly interface.
@@ -152,10 +126,10 @@ Here’s what’s coming next for Cloud Cup:
 
 ## Contributing
 
-Contributions, bug reports, and feature requests are welcome! Please submit them via GitHub Issues.
+Contributions, bug reports, and feature requests are welcome! Please submit them via GitHub Issues. efer to the [Configuration Guide](https://cloud-cup.netlify.app/docs/5_contribute)
 
 ## Sponsors and Funding
 
-
 Cloud Cup is an early-stage project with immense potential. We’re actively seeking sponsors and funding to take Cloud Cup to the next level.
-- 💡 For sponsorship inquiries, please contact [aliamer19ali@gmail.com]
+Support the development of Cloud Cup by joining our membership program on [Patreon](patreon.com/AliAmer719). 
+**Every contribution helps!**
