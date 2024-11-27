@@ -40,15 +40,10 @@ pub fn start(server_address: std.net.Address, config_manager: ConfigManager, sha
     var connection = Connection.init(allocator);
     defer connection.deinit();
 
-    var thread_safe_arena: std.heap.ThreadSafeAllocator = .{
-        .child_allocator = allocator,
-    };
-    const arena = thread_safe_arena.allocator();
-
     var thread_pool: Pool = undefined;
 
     try thread_pool.init(Pool.Options{
-        .allocator = arena,
+        .allocator = allocator,
     });
     defer thread_pool.deinit();
 
