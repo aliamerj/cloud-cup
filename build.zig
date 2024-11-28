@@ -48,12 +48,6 @@ pub fn build(b: *std.Build) void {
     lb_md.addImport("core", core_md);
     lb_md.addImport("common", common_md);
 
-    const security_md = b.createModule(.{
-        .root_source_file = b.path("modules/security/security.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
     const exe = b.addExecutable(.{
         .name = "cloud-cup",
         .root_source_file = b.path("src/main.zig"),
@@ -66,9 +60,8 @@ pub fn build(b: *std.Build) void {
     exe.root_module.addImport("config", config_md);
     exe.root_module.addImport("loadBalancer", lb_md);
     exe.root_module.addImport("common", common_md);
-    exe.root_module.addImport("security", security_md);
-    b.installArtifact(exe);
 
+    b.installArtifact(exe);
     const run_cmd = b.addRunArtifact(exe);
 
     run_cmd.step.dependOn(b.getInstallStep());

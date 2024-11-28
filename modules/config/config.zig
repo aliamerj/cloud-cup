@@ -21,7 +21,6 @@ pub const Conf = struct {
     ssl: ?*ssl.SSL_CTX,
     ssl_certificate: []const u8 = "",
     ssl_certificate_key: []const u8 = "",
-    security: bool,
 };
 
 pub const ValidationMessage = struct {
@@ -137,7 +136,6 @@ pub const Config = struct {
             .ssl = build.ssl,
             .ssl_certificate = build.ssl_certificate,
             .ssl_certificate_key = build.ssl_certificate_key,
-            .security = build.security,
         };
     }
 };

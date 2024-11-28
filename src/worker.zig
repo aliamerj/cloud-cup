@@ -6,7 +6,6 @@ const SharedConfig = @import("common").SharedConfig;
 const cli = @import("cup_cli/cup_cli.zig");
 
 const Strategy = @import("loadBalancer").Strategy;
-const secure = @import("security").secure;
 
 const Pool = std.Thread.Pool;
 const WaitGroup = std.Thread.WaitGroup;
@@ -157,15 +156,6 @@ fn handleRequest(
         ops.sendBadRequest(conn.*) catch {};
         return;
     };
-
-    if (config.conf.security) {
-        secure(request) catch |er| {
-            ops.sendSecurityError(conn.*, @errorName(er)) catch {};
-            ops.closeConnection(epoll_fd, conn, connection) catch {};
-            std.debug.print("{any}\n", .{er});
-            return;
-        };
-    }
 
     const path_info = extractPath(request) catch {
         handleError(conn, epoll_fd, connection);
