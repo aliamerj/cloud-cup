@@ -14,14 +14,14 @@ pub fn build(b: *std.Build) void {
         .link_libcpp = true,
     });
 
+    core_md.addLibraryPath(b.path("boringSSL"));
+
     // Add include path for BoringSSL headers
-    core_md.addIncludePath(b.path("libs/boringssl/include"));
+    core_md.addIncludePath(b.path("boringSSL/include"));
 
     // Add the BoringSSL libraries
-    core_md.addCSourceFile(.{ .file = b.path("libs/boringssl/build/libdecrepit.a") });
-    core_md.addCSourceFile(.{ .file = b.path("libs/boringssl/build/libcrypto.a") });
-    core_md.addCSourceFile(.{ .file = b.path("libs/boringssl/build/libssl.a") });
-    core_md.addCSourceFile(.{ .file = b.path("libs/boringssl/build/libpki.a") });
+    core_md.addCSourceFile(.{ .file = b.path("boringSSL/lib/libcrypto.a") });
+    core_md.addCSourceFile(.{ .file = b.path("boringSSL/lib/libssl.a") });
 
     const config_md = b.createModule(.{
         .root_source_file = b.path("modules/config/configuration.zig"),

@@ -2,4 +2,3 @@
 zig-out/
 vgcore.*
 /ssl_key/*
-/libs/*
