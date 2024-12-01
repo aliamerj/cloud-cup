@@ -19,13 +19,5 @@ jobs:
       - name: Set up Zig
         uses: mlugg/setup-zig@v1
       
-      - name: Install Build Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build cmake unzip curl
-
-      - name: Install BoringSSL
-        run: make install
-      
       - name: Run Tests
         run: make test
