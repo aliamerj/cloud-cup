@@ -89,10 +89,6 @@ You can start by obtaining Cloud Cup in one of two ways:
      ```bash
      git clone https://github.com/cloud-cup/cloud-cup.git
      ```
-   - Run the installation:
-    ```bash
-     make install
-    ```
    - Build the project in release mode:
     ```bash
     zig build -Drelease=true
