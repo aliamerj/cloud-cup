@@ -22,8 +22,8 @@ pub fn acceptIncomingConnections(
             return err;
         };
         const fd = conn.stream.handle;
-        if (ssl_ctx) |_| {
-            ssl_ops.acceptSSL(fd, epoll, ssl_ctx, connection) catch |err| {
+        if (ssl_ctx) |ctx| {
+            ssl_ops.acceptSSL(fd, epoll, ctx, connection) catch |err| {
                 if (err == error.SSLHandshakeFailed or err == error.FailedToCreateSSLObject) {
                     try sendBadRequest(.{ .fd = conn.stream.handle, .ssl = null });
                     _ = std.posix.close(fd);
